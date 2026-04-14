@@ -4,14 +4,19 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 
+const { initDB } = require('./db');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Ensure /data directory exists (for SQLite in later phases)
+// Ensure /data directory exists (for SQLite)
 const dataDir = path.join(__dirname, 'data');
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
+
+// Initialise SQLite (creates tables if they don't exist).
+initDB();
 
 // Middleware
 app.use(express.json());
