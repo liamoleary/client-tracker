@@ -6,6 +6,7 @@ const fs = require('fs');
 
 const { initDB } = require('./db');
 const projectsRouter = require('./routes/projects');
+const { router: timerRouter } = require('./routes/timer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -30,6 +31,7 @@ app.get('/health', (req, res) => {
 
 // API routes
 app.use('/api/projects', projectsRouter);
+app.use('/api/timer', timerRouter);
 
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
