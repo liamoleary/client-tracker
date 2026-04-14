@@ -2,7 +2,6 @@ require('dotenv').config();
 
 const express = require('express');
 const path = require('path');
-const fs = require('fs');
 
 const { initDB } = require('./db');
 const projectsRouter = require('./routes/projects');
@@ -14,13 +13,7 @@ const timerMonitor = require('./jobs/timerMonitor');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Ensure /data directory exists (for SQLite)
-const dataDir = path.join(__dirname, 'data');
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
-}
-
-// Initialise SQLite (creates tables if they don't exist).
+// Initialise SQLite (creates the data directory and tables if needed).
 initDB();
 
 // Configure web-push from VAPID env vars (no-op with warning if unset).
