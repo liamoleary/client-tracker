@@ -1,8 +1,217 @@
-/* Placeholder styles — real UI built in Phase 7. */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0f0f11;
+  --surface:   #1a1a1f;
+  --surface2:  #24242b;
+  --border:    #2e2e38;
+  --text:      #e8e8f0;
+  --muted:     #888898;
+  --accent:    #6c8bff;
+  --accent-h:  #8aa3ff;
+  --danger:    #ff5f5f;
+  --danger-h:  #ff7878;
+  --success:   #4fd17a;
+  --active-bg: #1a2340;
+  --active-bd: #3a5aaa;
+  --radius:    10px;
+  --gap:       1rem;
+}
+
+html { font-size: 16px; }
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  margin: 0;
-  padding: 2rem;
-  background: #111;
-  color: #eee;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100dvh;
+  padding-bottom: 3rem;
+}
+
+/* ── Active-timer banner ─────────────────────────────────────── */
+#active-banner {
+  display: none;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--active-bg);
+  border-bottom: 2px solid var(--active-bd);
+  padding: 0.75rem 1.25rem;
+  align-items: center;
+  gap: 1rem;
+}
+
+#active-banner.visible { display: flex; }
+
+#active-banner .timer-label {
+  flex: 1;
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#active-banner .timer-label .project-name {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+#active-banner .timer-label .elapsed {
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+/* ── Main container ─────────────────────────────────────────── */
+.container {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 1.75rem 1.25rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 1.5rem;
+  color: var(--text);
+}
+
+/* ── Notification banner ────────────────────────────────────── */
+#notifications-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: #1d1a10;
+  border: 1px solid #5a4e10;
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+  font-size: 0.9rem;
+}
+
+#notifications-banner[hidden] { display: none; }
+
+#notifications-banner p { flex: 1; color: #d4c070; }
+
+#notifications-status {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+  min-height: 1.1em;
+}
+
+/* ── Add Project ────────────────────────────────────────────── */
+.add-project {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 1.75rem;
+}
+
+.add-project input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 0.95rem;
+  padding: 0.6rem 0.9rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.add-project input::placeholder { color: var(--muted); }
+
+.add-project input:focus { border-color: var(--accent); }
+
+/* ── Buttons ────────────────────────────────────────────────── */
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 0.6rem 1.1rem;
+  transition: background 0.15s, opacity 0.15s;
+  white-space: nowrap;
+}
+
+button:disabled { opacity: 0.4; cursor: default; }
+
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:not(:disabled):hover { background: var(--accent-h); }
+
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:not(:disabled):hover { background: var(--danger-h); }
+
+.btn-secondary {
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-secondary:not(:disabled):hover { background: var(--border); }
+
+/* ── Projects list ──────────────────────────────────────────── */
+#projects-section h2 {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 0.65rem;
+}
+
+#project-list { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.project-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.project-row.active {
+  background: var(--active-bg);
+  border-color: var(--active-bd);
+}
+
+.project-row .project-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.project-row .project-info .name {
+  font-weight: 600;
+  font-size: 0.97rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-row .project-info .total {
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  margin-top: 0.15rem;
+}
+
+.project-row.active .project-info .name { color: var(--accent-h); }
+
+#empty-state {
+  text-align: center;
+  color: var(--muted);
+  padding: 2rem 0;
+  font-size: 0.9rem;
+}
+
+/* ── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .project-row { flex-wrap: wrap; }
+  .project-row .project-info { flex-basis: 100%; }
+  .project-row button { flex: 1; text-align: center; }
+  #active-banner { flex-wrap: wrap; }
+  #active-banner .timer-label { flex-basis: 100%; }
+  #active-banner button { flex: 1; }
 }

@@ -7,20 +7,49 @@
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <main>
+
+    <!-- Active timer sticky banner -->
+    <div id="active-banner" role="status" aria-live="polite">
+      <span class="timer-label">
+        ⏱ <span class="project-name" id="banner-project"></span>
+        &mdash; <span class="elapsed" id="banner-elapsed">00:00:00</span>
+      </span>
+      <button class="btn-danger" id="banner-stop-btn" type="button">Stop Timer</button>
+    </div>
+
+    <div class="container">
       <h1>Time Tracker</h1>
 
-      <section id="notifications-banner" class="banner" hidden>
+      <!-- Push notifications prompt -->
+      <section id="notifications-banner" hidden aria-label="Notifications">
         <p>Enable notifications to get hourly check-ins.</p>
-        <button id="enable-notifications-btn" type="button">
+        <button class="btn-secondary" id="enable-notifications-btn" type="button">
           Enable Notifications
         </button>
       </section>
+      <p id="notifications-status"></p>
 
-      <p id="notifications-status" class="status"></p>
+      <!-- Add project -->
+      <div class="add-project">
+        <input
+          type="text"
+          id="new-project-input"
+          placeholder="New project name"
+          autocomplete="off"
+          maxlength="80"
+          aria-label="New project name"
+        />
+        <button class="btn-primary" id="add-project-btn" type="button">Add</button>
+      </div>
 
-      <p class="phase-note">Full UI coming in Phase 7.</p>
-    </main>
+      <!-- Project list -->
+      <section id="projects-section">
+        <h2>Projects</h2>
+        <div id="project-list"></div>
+        <p id="empty-state" hidden>No projects yet. Add one above.</p>
+      </section>
+    </div>
+
     <script src="/app.js"></script>
   </body>
 </html>

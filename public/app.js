@@ -1,127 +1,282 @@
-// Time Tracker frontend — Phase 6 scope: service worker + push subscription.
-// Phase 7 will build the rest of the UI on top of this.
+// Time Tracker — frontend
 
 (function () {
+  'use strict';
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  function formatSeconds(totalSec) {
+    const s = Math.max(0, Math.floor(totalSec));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return [h, m, sec].map((n) => String(n).padStart(2, '0')).join(':');
+  }
+
+  async function api(method, path, body) {
+    const opts = {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+    };
+    if (body !== undefined) opts.body = JSON.stringify(body);
+    const res = await fetch(path, opts);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  }
+
+  // ── State ────────────────────────────────────────────────────────────────
+
+  let projects = [];        // [{ id, name, total_seconds }]
+  let activeSession = null; // { id, project_id, start_time, project_name } | null
+  let tickIntervalId = null;
+
+  // ── DOM refs ─────────────────────────────────────────────────────────────
+
+  const activeBanner       = document.getElementById('active-banner');
+  const bannerProject      = document.getElementById('banner-project');
+  const bannerElapsed      = document.getElementById('banner-elapsed');
+  const bannerStopBtn      = document.getElementById('banner-stop-btn');
+
+  const notifBanner        = document.getElementById('notifications-banner');
+  const notifStatusEl      = document.getElementById('notifications-status');
+  const enableNotifBtn     = document.getElementById('enable-notifications-btn');
+
+  const newProjectInput    = document.getElementById('new-project-input');
+  const addProjectBtn      = document.getElementById('add-project-btn');
+  const projectList        = document.getElementById('project-list');
+  const emptyState         = document.getElementById('empty-state');
+
+  // ── Timer ticker ─────────────────────────────────────────────────────────
+
+  function startTick() {
+    if (tickIntervalId) return;
+    tickIntervalId = setInterval(updateBanner, 1000);
+  }
+
+  function stopTick() {
+    if (tickIntervalId) {
+      clearInterval(tickIntervalId);
+      tickIntervalId = null;
+    }
+  }
+
+  function updateBanner() {
+    if (!activeSession) {
+      activeBanner.classList.remove('visible');
+      stopTick();
+      return;
+    }
+    const elapsedSec = (Date.now() - new Date(activeSession.start_time).getTime()) / 1000;
+    bannerProject.textContent = activeSession.project_name;
+    bannerElapsed.textContent = formatSeconds(elapsedSec);
+    activeBanner.classList.add('visible');
+  }
+
+  // ── Render project list ───────────────────────────────────────────────────
+
+  function renderProjects() {
+    const timerRunning = activeSession !== null;
+    projectList.innerHTML = '';
+    emptyState.hidden = projects.length > 0;
+
+    projects.forEach((p) => {
+      const isActive = timerRunning && activeSession.project_id === p.id;
+
+      const row = document.createElement('div');
+      row.className = 'project-row' + (isActive ? ' active' : '');
+      row.dataset.id = p.id;
+
+      const info = document.createElement('div');
+      info.className = 'project-info';
+
+      const name = document.createElement('div');
+      name.className = 'name';
+      name.textContent = p.name;
+
+      const total = document.createElement('div');
+      total.className = 'total';
+      if (isActive) {
+        const extra = Math.floor(
+          (Date.now() - new Date(activeSession.start_time).getTime()) / 1000,
+        );
+        total.textContent = 'Total: ' + formatSeconds(p.total_seconds + extra) + ' (running)';
+      } else {
+        total.textContent = 'Total: ' + formatSeconds(p.total_seconds);
+      }
+
+      info.appendChild(name);
+      info.appendChild(total);
+
+      const btn = document.createElement('button');
+      if (isActive) {
+        btn.className = 'btn-danger';
+        btn.textContent = 'Stop Timer';
+        btn.addEventListener('click', () => stopTimer());
+      } else {
+        btn.className = 'btn-primary';
+        btn.textContent = 'Start Timer';
+        btn.disabled = timerRunning;
+        btn.addEventListener('click', () => startTimer(p.id));
+      }
+
+      row.appendChild(info);
+      row.appendChild(btn);
+      projectList.appendChild(row);
+    });
+  }
+
+  // ── API actions ───────────────────────────────────────────────────────────
+
+  async function loadAll() {
+    const [p, a] = await Promise.all([
+      api('GET', '/api/projects'),
+      api('GET', '/api/timer/active'),
+    ]);
+    projects = p;
+    activeSession = a;
+
+    if (activeSession) {
+      updateBanner();
+      startTick();
+    } else {
+      activeBanner.classList.remove('visible');
+      stopTick();
+    }
+    renderProjects();
+  }
+
+  async function addProject() {
+    const name = newProjectInput.value.trim();
+    if (!name) return;
+    addProjectBtn.disabled = true;
+    try {
+      await api('POST', '/api/projects', { name });
+      newProjectInput.value = '';
+      await loadAll();
+    } catch (err) {
+      alert('Could not add project: ' + err.message);
+    } finally {
+      addProjectBtn.disabled = false;
+    }
+  }
+
+  async function startTimer(projectId) {
+    try {
+      const session = await api('POST', '/api/timer/start', { project_id: projectId });
+      activeSession = { ...session };
+      updateBanner();
+      startTick();
+      await loadAll();
+    } catch (err) {
+      alert('Could not start timer: ' + err.message);
+    }
+  }
+
+  async function stopTimer() {
+    bannerStopBtn.disabled = true;
+    try {
+      await api('POST', '/api/timer/stop');
+      activeSession = null;
+      stopTick();
+      activeBanner.classList.remove('visible');
+      await loadAll();
+    } catch (err) {
+      alert('Could not stop timer: ' + err.message);
+    } finally {
+      bannerStopBtn.disabled = false;
+    }
+  }
+
+  // ── Event wiring ──────────────────────────────────────────────────────────
+
+  addProjectBtn.addEventListener('click', addProject);
+
+  newProjectInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') addProject();
+  });
+
+  bannerStopBtn.addEventListener('click', stopTimer);
+
+  // ── Push notifications ────────────────────────────────────────────────────
+
   const pushSupported =
     'serviceWorker' in navigator &&
     'PushManager' in window &&
     'Notification' in window;
 
-  const enableBtn = document.getElementById('enable-notifications-btn');
-  const banner = document.getElementById('notifications-banner');
-  const statusEl = document.getElementById('notifications-status');
-
-  function setStatus(text) {
-    if (statusEl) statusEl.textContent = text;
-    else console.log('[push]', text);
+  function setNotifStatus(text) {
+    notifStatusEl.textContent = text;
   }
 
-  function hideBanner() {
-    if (banner) banner.hidden = true;
-  }
-
-  function showBanner() {
-    if (banner) banner.hidden = false;
-  }
-
-  function urlBase64ToUint8Array(base64String) {
-    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  function urlBase64ToUint8Array(b64) {
+    const padding = '='.repeat((4 - (b64.length % 4)) % 4);
+    const base64 = (b64 + padding).replace(/-/g, '+').replace(/_/g, '/');
     const raw = atob(base64);
     const out = new Uint8Array(raw.length);
-    for (let i = 0; i < raw.length; i += 1) out[i] = raw.charCodeAt(i);
+    for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
     return out;
   }
 
-  async function getVapidPublicKey() {
-    const res = await fetch('/api/push/vapid-public-key');
-    if (!res.ok) throw new Error('vapid key fetch failed');
-    const body = await res.json();
-    if (!body.key) throw new Error('server has no VAPID key configured');
-    return body.key;
-  }
-
-  async function saveSubscription(sub) {
-    const res = await fetch('/api/push/subscribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(sub),
-    });
-    if (!res.ok) throw new Error('subscribe save failed');
-    return res.json();
-  }
-
   async function registerAndSubscribe() {
-    const registration = await navigator.serviceWorker.register('/sw.js');
+    const reg = await navigator.serviceWorker.register('/sw.js');
     await navigator.serviceWorker.ready;
 
-    let sub = await registration.pushManager.getSubscription();
+    let sub = await reg.pushManager.getSubscription();
     if (!sub) {
-      const key = await getVapidPublicKey();
-      sub = await registration.pushManager.subscribe({
+      const { key } = await api('GET', '/api/push/vapid-public-key');
+      if (!key) throw new Error('Server has no VAPID key configured.');
+      sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(key),
       });
     }
-    await saveSubscription(sub.toJSON ? sub.toJSON() : sub);
-    return sub;
+    await api('POST', '/api/push/subscribe', sub.toJSON ? sub.toJSON() : sub);
   }
 
   async function enableNotifications() {
     if (!pushSupported) {
-      setStatus('Push notifications are not supported in this browser.');
+      setNotifStatus('Push notifications are not supported in this browser.');
       return;
     }
     try {
-      setStatus('Requesting permission…');
+      setNotifStatus('Requesting permission…');
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
-        setStatus('Notifications permission denied.');
-        showBanner();
+        setNotifStatus('Notifications permission denied.');
         return;
       }
-      setStatus('Subscribing…');
+      setNotifStatus('Subscribing…');
       await registerAndSubscribe();
-      setStatus('Notifications enabled.');
-      hideBanner();
+      setNotifStatus('Notifications enabled.');
+      notifBanner.hidden = true;
     } catch (err) {
-      console.error('[push] enable failed:', err);
-      setStatus('Could not enable notifications: ' + (err.message || err));
-      showBanner();
+      console.error('[push]', err);
+      setNotifStatus('Could not enable notifications: ' + (err.message || err));
     }
   }
 
-  async function init() {
-    if (!pushSupported) {
-      setStatus('Push notifications are not supported in this browser.');
-      hideBanner();
-      return;
-    }
+  async function initPush() {
+    if (!pushSupported) { notifBanner.hidden = true; return; }
 
     if (Notification.permission === 'granted') {
-      // Already granted — make sure the SW is registered and subscription is saved.
       try {
         await registerAndSubscribe();
-        setStatus('Notifications enabled.');
-        hideBanner();
+        setNotifStatus('Notifications enabled.');
+        notifBanner.hidden = true;
       } catch (err) {
         console.error('[push] auto-subscribe failed:', err);
-        setStatus('Notifications permission granted, but subscription failed.');
-        showBanner();
+        notifBanner.hidden = false;
       }
     } else {
-      showBanner();
-      setStatus('');
+      notifBanner.hidden = false;
     }
 
-    if (enableBtn) {
-      enableBtn.addEventListener('click', enableNotifications);
-    }
+    enableNotifBtn.addEventListener('click', enableNotifications);
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
+  // ── Boot ─────────────────────────────────────────────────────────────────
+
+  loadAll().catch(console.error);
+  initPush().catch(console.error);
 })();
