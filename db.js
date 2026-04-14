@@ -2,7 +2,12 @@ const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');
 
-const dataDir = path.join(__dirname, 'data');
+// Prefer an explicitly mounted Railway volume, then fall back to /tmp on
+// Railway (ephemeral but lets the app boot), then to ./data locally.
+const dataDir =
+  process.env.DB_DIR ||
+  process.env.RAILWAY_VOLUME_MOUNT_PATH ||
+  (process.env.RAILWAY_ENVIRONMENT ? '/tmp' : path.join(__dirname, 'data'));
 const dbPath = path.join(dataDir, 'db.sqlite');
 
 // Ensure the data directory exists before opening the DB.
