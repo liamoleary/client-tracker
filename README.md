@@ -43,6 +43,7 @@ Open `http://localhost:3000`. Health check: `GET /health` → `{"status":"ok"}`.
 | `VAPID_PUBLIC_KEY`  | Web Push VAPID public key.                           |
 | `VAPID_PRIVATE_KEY` | Web Push VAPID private key.                          |
 | `VAPID_EMAIL`       | Contact email used as the VAPID `mailto:` subject.   |
+| `DB_DIR`            | Optional override for SQLite directory. Defaults to `RAILWAY_VOLUME_MOUNT_PATH` if set, else `/tmp` on Railway, else `./data` locally. |
 
 If the VAPID vars are not set, the server still runs but push notifications
 are disabled (useful for local dev without keys).
@@ -63,8 +64,8 @@ Railway's env vars) as `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`. Set
 
 1. **Push this repo to GitHub.**
 
-2. **Create a Railway project** from the GitHub repo (Railway detects the
-   `Dockerfile` automatically).
+2. **Create a Railway project** from the GitHub repo. Railway detects
+   Node.js via Nixpacks automatically and runs `npm start`.
 
 3. **Set environment variables** on the service (Variables tab):
 
@@ -77,11 +78,16 @@ Railway's env vars) as `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`. Set
 4. **Add a Volume** so SQLite survives redeploys:
 
    - Service → Settings → Volumes → **New Volume**
-   - Mount path: `/app/data`
-   - Any small size (1 GB is plenty)
+   - Mount path: any path you like (e.g. `/data`). Railway exposes it
+     via the `RAILWAY_VOLUME_MOUNT_PATH` env var, which the app reads
+     automatically — no hardcoded path required.
+   - Any small size (1 GB is plenty).
 
-5. **Deploy.** Railway builds the Dockerfile and starts the service.
-   Open the generated public URL and hit `/health`.
+   If no volume is attached the app still boots (SQLite falls back to
+   `/tmp`), but data will be lost on redeploy.
+
+5. **Deploy.** Railway builds and starts the service. Open the generated
+   public URL and hit `/health`.
 
 6. **Enable notifications** on your phone:
 
@@ -94,10 +100,15 @@ Railway's env vars) as `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`. Set
 
 ### Data persistence
 
-SQLite lives at `/app/data/db.sqlite` inside the container. With the volume
-mounted at `/app/data`, the database survives redeploys and container
-restarts. The `/app/data` directory is also created automatically on
-startup if it doesn't exist (`fs.mkdirSync(..., { recursive: true })`).
+SQLite lives at `<data-dir>/db.sqlite`, where `<data-dir>` is chosen in
+this order:
+
+1. `DB_DIR` (explicit override)
+2. `RAILWAY_VOLUME_MOUNT_PATH` (set automatically by Railway when a volume is attached)
+3. `/tmp` if running on Railway without a volume (ephemeral)
+4. `./data` locally
+
+The directory is created on startup if it doesn't exist.
 
 ---
 
@@ -116,10 +127,9 @@ startup if it doesn't exist (`fs.mkdirSync(..., { recursive: true })`).
   sessions.js        GET /api/sessions/:project_id
 /jobs
   timerMonitor.js    node-cron: hourly push + 2h auto-stop
-/data                SQLite lives here (mount a Railway volume here)
+/data                SQLite lives here locally (Railway uses the mounted volume)
 db.js                better-sqlite3 instance + initDB()
 server.js            Express app wiring
-Dockerfile           node:18-alpine build
 ```
 
 ## API reference
