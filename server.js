@@ -44,6 +44,6 @@ app.use('/api/sessions', sessionsRouter);
 // Start the background monitor (hourly check-in + 2h auto-stop).
 timerMonitor.start();
 
-app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server listening on 0.0.0.0:${PORT}`);
 });
