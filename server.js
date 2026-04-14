@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 
 const { initDB } = require('./db');
+const projectsRouter = require('./routes/projects');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -26,6 +27,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
+
+// API routes
+app.use('/api/projects', projectsRouter);
 
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
