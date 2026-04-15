@@ -1,0 +1,3 @@
+shotgun-api3
+requests
+tqdm
