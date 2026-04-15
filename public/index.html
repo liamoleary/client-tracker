@@ -24,11 +24,14 @@
 
     <!-- Active timer sticky banner -->
     <div id="active-banner" role="status" aria-live="polite">
-      <span class="timer-label">
-        ⏱ <span class="project-name" id="banner-project"></span>
-        &mdash; <span class="elapsed" id="banner-elapsed">00:00:00</span>
-      </span>
-      <button class="btn-danger" id="banner-stop-btn" type="button">Stop Timer</button>
+      <div class="banner-info">
+        <span class="timer-label">
+          ⏱ <span class="project-name" id="banner-project"></span>
+          &mdash; <span class="elapsed" id="banner-elapsed">00:00:00</span>
+        </span>
+        <span class="banner-started" id="banner-started"></span>
+      </div>
+      <button class="btn-danger" id="banner-stop-btn" type="button">Stop</button>
     </div>
 
     <div class="container">

@@ -208,10 +208,351 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 /* ── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 480px) {
-  .project-row { flex-wrap: wrap; }
-  .project-row .project-info { flex-basis: 100%; }
-  .project-row button { flex: 1; text-align: center; }
   #active-banner { flex-wrap: wrap; }
-  #active-banner .timer-label { flex-basis: 100%; }
+  #active-banner .banner-info { flex-basis: 100%; }
   #active-banner button { flex: 1; }
+}
+
+/* ── Banner layout update ──────────────────────────────────── */
+.banner-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.banner-started {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* ── Project header (new layout) ──────────────────────────── */
+.project-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.project-header .project-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.project-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.stats {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-top: 0.15rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.stat-earnings {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.running-badge {
+  color: var(--success);
+  font-size: 0.75rem;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.btn-icon {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 0.7rem;
+  padding: 0.45rem 0.6rem;
+  line-height: 1;
+}
+.btn-icon:hover { background: var(--border); }
+
+/* ── Project row expanded state ────────────────────────────── */
+.project-row.expanded {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/* ── Expanded details panel ────────────────────────────────── */
+.project-details {
+  border-top: 1px solid var(--border);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* ── Fortnight / invoice block ─────────────────────────────── */
+.fortnight-block {
+  background: #16261a;
+  border: 1px solid #2a4a30;
+  border-radius: calc(var(--radius) - 2px);
+  padding: 0.75rem 1rem;
+}
+
+.fortnight-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #6aaa7a;
+  margin-bottom: 0.2rem;
+}
+
+.fortnight-period {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+}
+
+.fortnight-amount {
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.fortnight-amount strong {
+  color: var(--success);
+  font-size: 1.1rem;
+}
+
+/* ── Rate row ──────────────────────────────────────────────── */
+.rate-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.rate-value {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.8rem;
+  padding: 0 0.25rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.btn-link:hover { color: var(--accent-h); }
+
+.rate-form {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.rate-form label {
+  font-size: 0.82rem;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.rate-form input[type="number"] {
+  width: 80px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 0.85rem;
+  padding: 0.35rem 0.5rem;
+  outline: none;
+}
+.rate-form input[type="number"]:focus { border-color: var(--accent); }
+
+/* ── Week groups ───────────────────────────────────────────── */
+.week-group {
+  background: var(--surface2);
+  border-radius: calc(var(--radius) - 2px);
+  overflow: hidden;
+}
+
+.week-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  background: #1e1e26;
+  border-bottom: 1px solid var(--border);
+  gap: 0.5rem;
+}
+
+.week-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.week-total {
+  font-size: 0.8rem;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.week-total-earnings {
+  color: var(--success);
+  font-weight: 600;
+}
+
+/* ── Session items ─────────────────────────────────────────── */
+.session-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+
+.session-item:last-child { border-bottom: none; }
+
+.session-item.running {
+  background: #121e30;
+}
+
+.session-date {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.session-time {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-duration {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.session-earnings {
+  color: var(--success);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.manual-tag, .running-tag {
+  font-size: 0.68rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.manual-tag {
+  background: #2a2418;
+  color: #c8a040;
+  border: 1px solid #5a4e10;
+}
+
+.running-tag {
+  background: #132213;
+  color: var(--success);
+  border: 1px solid #2a4a30;
+  animation: pulse 2s infinite;
+}
+
+.session-delete {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 0.2rem;
+  opacity: 0.4;
+  transition: opacity 0.15s, color 0.15s;
+}
+.session-delete:hover { opacity: 1; color: var(--danger); }
+
+/* ── Manual entry form ─────────────────────────────────────── */
+.manual-entry {
+  border: 1px dashed var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  padding: 0.65rem 0.75rem;
+}
+
+.manual-title {
+  font-size: 0.78rem;
+  color: var(--accent);
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  cursor: default;
+}
+
+.manual-form {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.manual-form input[type="date"],
+.manual-form input[type="number"] {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 0.82rem;
+  padding: 0.35rem 0.5rem;
+  outline: none;
+}
+.manual-form input[type="date"]:focus,
+.manual-form input[type="number"]:focus { border-color: var(--accent); }
+
+.manual-form input[type="number"] { width: 60px; }
+
+.manual-form input[type="date"] {
+  color-scheme: dark;
+}
+
+.no-sessions {
+  font-size: 0.85rem;
+  color: var(--muted);
+  padding: 0.5rem 0;
+}
+
+/* ── Responsive tweaks ─────────────────────────────────────── */
+@media (max-width: 480px) {
+  .session-item {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+  }
+  .session-date { grid-column: 1; grid-row: 1; }
+  .session-time { grid-column: 2; grid-row: 1; text-align: right; }
+  .session-duration { grid-column: 1; grid-row: 2; }
+  .session-earnings { grid-column: 2; grid-row: 2; text-align: right; }
+  .manual-tag, .running-tag, .session-delete {
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+  .session-delete { grid-column: 3; }
 }

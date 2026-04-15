@@ -49,6 +49,14 @@ function initDB() {
     CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_active ON sessions(end_time);
   `);
+
+  // Idempotent migrations — SQLite throws if a column already exists, which we swallow.
+  for (const stmt of [
+    'ALTER TABLE projects ADD COLUMN daily_rate REAL NOT NULL DEFAULT 650',
+    'ALTER TABLE sessions ADD COLUMN is_manual INTEGER NOT NULL DEFAULT 0',
+  ]) {
+    try { db.exec(stmt); } catch (_) { /* already exists */ }
+  }
 }
 
 module.exports = { db, initDB };
