@@ -681,8 +681,41 @@
     enableNotifBtn.addEventListener('click', enableNotifications);
   }
 
+  // ── Storage status check ──────────────────────────────────────────────────
+  //
+  // Fetch /api/status once on load. If the backend reports ephemeral storage,
+  // show a loud warning banner so the user knows data will be lost on
+  // redeploy and can download a backup immediately.
+
+  async function checkStorage() {
+    const warningEl = document.getElementById('storage-warning');
+    const bodyEl    = document.getElementById('storage-warning-body');
+    const footerEl  = document.getElementById('storage-footer');
+    try {
+      const s = await api('GET', '/api/status');
+      const { persistent, reason, on_railway } = s.storage;
+      if (persistent) {
+        warningEl.hidden = true;
+        if (footerEl) footerEl.textContent = 'Data storage: persistent';
+        return;
+      }
+      const fix = on_railway
+        ? ' Attach a Railway volume (Service → Settings → Volumes → New Volume, mount path /data) and redeploy.'
+        : '';
+      bodyEl.textContent =
+        'Storage is ephemeral and will be wiped on the next restart or redeploy — ' +
+        reason + '.' + fix +
+        ' In the meantime, download a backup so nothing is lost.';
+      warningEl.hidden = false;
+      if (footerEl) footerEl.textContent = 'Data storage: ⚠ ephemeral';
+    } catch (err) {
+      console.warn('[status] check failed:', err);
+    }
+  }
+
   // ── Boot ─────────────────────────────────────────────────────────────────
 
   loadAll().catch(console.error);
   initPush().catch(console.error);
+  checkStorage().catch(console.error);
 })();

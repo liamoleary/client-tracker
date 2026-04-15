@@ -75,16 +75,24 @@ Railway's env vars) as `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`. Set
 
    (Do **not** set `PORT` — Railway provides it.)
 
-4. **Add a Volume** so SQLite survives redeploys:
+4. **Add a Volume** so SQLite survives redeploys. **This is required for
+   persistent data.** Without a volume, the app boots against `/tmp`,
+   prints a warning to the logs, shows a red banner in the UI, and
+   loses everything on the next container restart.
 
    - Service → Settings → Volumes → **New Volume**
-   - Mount path: any path you like (e.g. `/data`). Railway exposes it
-     via the `RAILWAY_VOLUME_MOUNT_PATH` env var, which the app reads
-     automatically — no hardcoded path required.
-   - Any small size (1 GB is plenty).
+   - Mount path: `/data` (or any path you like)
+   - Any small size (1 GB is plenty)
 
-   If no volume is attached the app still boots (SQLite falls back to
-   `/tmp`), but data will be lost on redeploy.
+   Railway exposes the chosen mount path via `RAILWAY_VOLUME_MOUNT_PATH`,
+   which the app reads automatically — no hardcoded path required.
+
+   After attaching the volume, **redeploy** so the new filesystem is
+   mounted. On a healthy persistent setup the boot log prints:
+
+   ```
+   [db] ✓ persistent storage: /data/db.sqlite  (Railway volume attached)
+   ```
 
 5. **Deploy.** Railway builds and starts the service. Open the generated
    public URL and hit `/health`.
@@ -105,10 +113,35 @@ this order:
 
 1. `DB_DIR` (explicit override)
 2. `RAILWAY_VOLUME_MOUNT_PATH` (set automatically by Railway when a volume is attached)
-3. `/tmp` if running on Railway without a volume (ephemeral)
+3. `/tmp` if running on Railway without a volume (**ephemeral — warns loudly**)
 4. `./data` locally
 
-The directory is created on startup if it doesn't exist.
+The directory is created on startup if it doesn't exist. If storage is
+ephemeral the UI displays a red warning banner and the server logs a
+large banner on every boot.
+
+### Backup & restore
+
+A full JSON snapshot can be downloaded any time:
+
+- **Download:** `GET /api/backup` — returns a `.json` file with every
+  project, session and push subscription. There's also a `Download
+  backup (.json)` link in the app's footer.
+- **Status:** `GET /api/status` — reports whether the current storage
+  directory is persistent and how many rows are in the DB.
+- **Restore:** `POST /api/restore` — accepts a backup payload plus
+  `confirm: "REPLACE"` and wipes/reloads the projects and sessions
+  tables from it. Push subscriptions are not restored — re-subscribe
+  from each device afterwards.
+
+Example restore from a downloaded backup:
+
+```bash
+BACKUP=client-tracker-backup-2026-04-15T00-00-00.json
+jq '. + {confirm: "REPLACE"}' "$BACKUP" \
+  | curl -sX POST https://your-app.up.railway.app/api/restore \
+      -H 'Content-Type: application/json' --data-binary @-
+```
 
 ---
 
@@ -121,10 +154,11 @@ The directory is created on startup if it doesn't exist.
   style.css          dark neutral theme, mobile-responsive
   sw.js              service worker: push handler + notification actions
 /routes
-  projects.js        GET/POST /api/projects
+  projects.js        GET/POST /api/projects, PATCH /api/projects/:id
   timer.js           GET /api/timer/active, POST /api/timer/{start,stop,confirm}
   push.js            POST /api/push/subscribe, GET /api/push/vapid-public-key
-  sessions.js        GET /api/sessions/:project_id
+  sessions.js        GET /api/sessions/:project_id, POST /api/sessions, DELETE /api/sessions/:id
+  backup.js          GET /api/status, GET /api/backup, POST /api/restore
 /jobs
   timerMonitor.js    node-cron: hourly push + 2h auto-stop
 /data                SQLite lives here locally (Railway uses the mounted volume)
@@ -143,6 +177,12 @@ server.js            Express app wiring
 | POST   | `/api/timer/start`            | `{ project_id }` — 400 if already running            |
 | POST   | `/api/timer/stop`             | Stop active session, set `duration_seconds`         |
 | POST   | `/api/timer/confirm`          | Reset `last_notified_at` on active session           |
+| PATCH  | `/api/projects/:id`           | Update project `{ daily_rate }`                      |
 | GET    | `/api/sessions/:project_id`   | All completed sessions for a project (newest first) |
+| POST   | `/api/sessions`               | Create a manual session `{ project_id, start_time, hours, minutes }` |
+| DELETE | `/api/sessions/:id`           | Delete a completed session                           |
+| GET    | `/api/status`                 | Storage info + row counts                            |
+| GET    | `/api/backup`                 | Download a JSON snapshot of all data                 |
+| POST   | `/api/restore`                | Replace projects/sessions from a backup (requires `confirm:"REPLACE"`) |
 | GET    | `/api/push/vapid-public-key`  | `{ key }` — public VAPID key                         |
 | POST   | `/api/push/subscribe`         | Save Web Push subscription                           |

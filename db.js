@@ -2,18 +2,75 @@ const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');
 
-// Prefer an explicitly mounted Railway volume, then fall back to /tmp on
-// Railway (ephemeral but lets the app boot), then to ./data locally.
-const dataDir =
-  process.env.DB_DIR ||
-  process.env.RAILWAY_VOLUME_MOUNT_PATH ||
-  (process.env.RAILWAY_ENVIRONMENT ? '/tmp' : path.join(__dirname, 'data'));
+// ── Resolve data directory & classify persistence ──────────────────────────
+//
+// Priority:
+//   1. Explicit DB_DIR — caller takes responsibility.
+//   2. RAILWAY_VOLUME_MOUNT_PATH — set automatically by Railway when a
+//      volume is attached. Always persistent.
+//   3. /tmp on Railway with no volume — EPHEMERAL. Container restart wipes it.
+//   4. ./data locally — persistent to local disk.
+
+const explicitDir = process.env.DB_DIR;
+const volumeDir   = process.env.RAILWAY_VOLUME_MOUNT_PATH;
+const onRailway   = !!process.env.RAILWAY_ENVIRONMENT;
+
+let dataDir;
+let persistent;
+let reason;
+
+if (explicitDir) {
+  dataDir = explicitDir;
+  // Treat /tmp as ephemeral even if set explicitly — it's wiped on most hosts.
+  persistent = !(explicitDir === '/tmp' || explicitDir.startsWith('/tmp/'));
+  reason = persistent ? 'DB_DIR override' : 'DB_DIR points at /tmp (ephemeral)';
+} else if (volumeDir) {
+  dataDir = volumeDir;
+  persistent = true;
+  reason = 'Railway volume attached';
+} else if (onRailway) {
+  dataDir = '/tmp';
+  persistent = false;
+  reason = 'Railway with NO volume attached — data will be lost on every redeploy';
+} else {
+  dataDir = path.join(__dirname, 'data');
+  persistent = true;
+  reason = 'local ./data directory';
+}
+
 const dbPath = path.join(dataDir, 'db.sqlite');
 
 // Ensure the data directory exists before opening the DB.
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
+
+// ── Startup banner ─────────────────────────────────────────────────────────
+
+function logStorageBanner() {
+  if (persistent) {
+    console.log(`[db] ✓ persistent storage: ${dbPath}  (${reason})`);
+    return;
+  }
+  const line = '═'.repeat(69);
+  console.warn(`
+╔${line}╗
+║  ⚠️  EPHEMERAL STORAGE — DATA WILL BE LOST ON EVERY REDEPLOY         ║
+║                                                                     ║
+║  ${reason.padEnd(67)}║
+║                                                                     ║
+║  To fix: in the Railway dashboard                                   ║
+║    → Service → Settings → Volumes → New Volume                      ║
+║    → Mount path: /data  (any path works, just pick one)             ║
+║    → Redeploy                                                       ║
+║                                                                     ║
+║  Current DB file (ephemeral):                                       ║
+║    ${dbPath.padEnd(65)}║
+╚${line}╝
+`);
+}
+
+// ── Open DB ────────────────────────────────────────────────────────────────
 
 const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
@@ -44,7 +101,6 @@ function initDB() {
     );
   `);
 
-  // Helpful indexes for the queries we'll run later.
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_active ON sessions(end_time);
@@ -57,6 +113,12 @@ function initDB() {
   ]) {
     try { db.exec(stmt); } catch (_) { /* already exists */ }
   }
+
+  logStorageBanner();
 }
 
-module.exports = { db, initDB };
+function getStorageInfo() {
+  return { dataDir, dbPath, persistent, reason, onRailway };
+}
+
+module.exports = { db, initDB, getStorageInfo };

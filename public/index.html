@@ -37,6 +37,16 @@
     <div class="container">
       <h1>Time Tracker</h1>
 
+      <!-- Ephemeral storage warning (shown only when the server reports it) -->
+      <section id="storage-warning" class="danger-banner" hidden>
+        <div class="danger-title">⚠ Your data is not being saved</div>
+        <p id="storage-warning-body"></p>
+        <div class="danger-actions">
+          <a class="btn-secondary" id="backup-download-btn" href="/api/backup"
+             download>Download backup now</a>
+        </div>
+      </section>
+
       <!-- Push notifications prompt -->
       <section id="notifications-banner" hidden aria-label="Notifications">
         <p>Enable notifications to get hourly check-ins.</p>
@@ -65,6 +75,11 @@
         <div id="project-list"></div>
         <p id="empty-state" hidden>No projects yet. Add one above.</p>
       </section>
+
+      <footer id="footer" class="app-footer">
+        <a href="/api/backup" download>Download backup (.json)</a>
+        <span id="storage-footer"></span>
+      </footer>
     </div>
 
     <script src="/app.js"></script>

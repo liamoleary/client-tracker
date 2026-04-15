@@ -76,6 +76,57 @@ h1 {
   color: var(--text);
 }
 
+/* ── Ephemeral-storage warning ──────────────────────────────── */
+.danger-banner {
+  background: #2a1415;
+  border: 1px solid var(--danger);
+  border-left-width: 4px;
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+  margin-bottom: 1.25rem;
+  color: #ffd4d4;
+  font-size: 0.88rem;
+}
+
+.danger-banner[hidden] { display: none; }
+
+.danger-title {
+  font-weight: 700;
+  color: var(--danger-h);
+  margin-bottom: 0.35rem;
+  font-size: 0.95rem;
+}
+
+.danger-banner p {
+  margin-bottom: 0.6rem;
+  line-height: 1.4;
+}
+
+.danger-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* ── App footer ─────────────────────────────────────────────── */
+.app-footer {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.78rem;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.app-footer a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.app-footer a:hover { color: var(--accent-h); text-decoration: underline; }
+
 /* ── Notification banner ────────────────────────────────────── */
 #notifications-banner {
   display: flex;
