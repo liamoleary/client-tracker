@@ -198,6 +198,16 @@
 
   bannerStopBtn.addEventListener('click', stopTimer);
 
+  // ── Service worker registration (PWA install + offline shell) ────────────
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch((err) => {
+        console.error('[sw] registration failed:', err);
+      });
+    });
+  }
+
   // ── Push notifications ────────────────────────────────────────────────────
 
   const pushSupported =
