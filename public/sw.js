@@ -5,7 +5,7 @@
 //  2. Handle push notifications (hourly check-ins).
 //  3. Respond to notification action clicks.
 
-const CACHE_VERSION = 'tt-shell-v3';
+const CACHE_VERSION = 'tt-shell-v4';
 const SHELL_ASSETS = [
   '/',
   '/index.html',
@@ -117,7 +117,21 @@ self.addEventListener('push', (event) => {
     ],
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  // Before showing, confirm the timer is still running. Push notifications can
+  // be queued by the push service and arrive after the session has already been
+  // stopped (e.g. phone was offline, delivery delayed). Discard stale ones.
+  event.waitUntil(
+    (async () => {
+      try {
+        const res = await fetch('/api/timer/active');
+        const active = await res.json();
+        if (!active) return; // timer already stopped — drop the notification
+      } catch {
+        // Can't reach the server — show the notification rather than drop it silently.
+      }
+      await self.registration.showNotification(title, options);
+    })(),
+  );
 });
 
 self.addEventListener('notificationclick', (event) => {
