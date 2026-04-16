@@ -100,7 +100,6 @@
   let tickIntervalId = null;
   let expandedProjects = new Set(); // project ids currently showing details
   let projectSessions = {};         // { [projectId]: completedSession[] }
-  let allSessions = [];             // every completed session across projects (newest first)
 
   // ── DOM refs ─────────────────────────────────────────────────────────────
 
@@ -118,23 +117,16 @@
   const addProjectBtn   = document.getElementById('add-project-btn');
   const projectList     = document.getElementById('project-list');
   const emptyState      = document.getElementById('empty-state');
-  const weeklySummary   = document.getElementById('weekly-summary');
 
   // ── Timer ticker ─────────────────────────────────────────────────────────
 
   function startTick() {
     if (tickIntervalId) return;
-    let tickCount = 0;
     tickIntervalId = setInterval(() => {
       updateBanner();
       // Keep running session row live if its project is expanded.
       if (activeSession && expandedProjects.has(activeSession.project_id)) {
         updateRunningSessionRow();
-      }
-      // Refresh the weekly summary every 15s so "days worked" ticks up while
-      // a timer is running (re-rendering every second is wasteful).
-      if (activeSession && ++tickCount % 15 === 0) {
-        renderWeeklySummary();
       }
     }, 1000);
   }
@@ -172,82 +164,10 @@
 
   // ── Render project list ───────────────────────────────────────────────────
 
-  // ── Weekly summary (cross-project) ───────────────────────────────────────
-  //
-  // A "day" is HOURS_PER_DAY (8) hours. The top-of-page summary shows total
-  // days worked this week and last week across every project, plus a
-  // progress bar toward a 5-day / 40-hour full work week.
-
-  const FULL_WEEK_DAYS = 5;
-
-  function renderWeeklySummary() {
-    if (!weeklySummary) return;
-
-    // Combine completed sessions + the currently running one so the number
-    // stays accurate while a timer is going.
-    const nowIso = new Date().toISOString();
-    const combined = allSessions.map((s) => ({
-      start_time: s.start_time,
-      duration_seconds: s.duration_seconds || 0,
-    }));
-    if (activeSession) {
-      combined.push({
-        start_time: activeSession.start_time,
-        duration_seconds: Math.max(
-          0,
-          Math.floor((Date.now() - new Date(activeSession.start_time).getTime()) / 1000),
-        ),
-      });
-    }
-
-    if (combined.length === 0) {
-      weeklySummary.innerHTML = '';
-      return;
-    }
-
-    const thisWk = weekKey(nowIso);
-    const lastWkDate = new Date(thisWk + 'T00:00:00');
-    lastWkDate.setDate(lastWkDate.getDate() - 7);
-    const lastWk = lastWkDate.toISOString().slice(0, 10);
-
-    const totalFor = (wk) => combined
-      .filter((s) => weekKey(s.start_time) === wk)
-      .reduce((sum, s) => sum + s.duration_seconds, 0);
-
-    const thisSec = totalFor(thisWk);
-    const lastSec = totalFor(lastWk);
-
-    const thisDays = thisSec / (HOURS_PER_DAY * 3600);
-    const lastDays = lastSec / (HOURS_PER_DAY * 3600);
-    const pct = Math.min(100, (thisDays / FULL_WEEK_DAYS) * 100);
-
-    weeklySummary.innerHTML =
-      `<div class="weekly-card">` +
-        `<div class="weekly-top">` +
-          `<div class="weekly-title">This week</div>` +
-          `<div class="weekly-range">${weekLabel(thisWk)}</div>` +
-        `</div>` +
-        `<div class="weekly-big">` +
-          `<span class="weekly-days-num">${thisDays.toFixed(1)}</span>` +
-          `<span class="weekly-days-label">days worked` +
-            `<span class="weekly-days-hint">(8h = 1 day)</span>` +
-          `</span>` +
-        `</div>` +
-        `<div class="weekly-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${FULL_WEEK_DAYS}" aria-valuenow="${thisDays.toFixed(1)}">` +
-          `<div class="weekly-bar-fill" style="width: ${pct}%"></div>` +
-        `</div>` +
-        `<div class="weekly-meta">` +
-          `<span>${formatHM(thisSec)} of ${FULL_WEEK_DAYS * HOURS_PER_DAY}h</span>` +
-          `<span>Last week: <strong>${lastDays.toFixed(1)}d</strong> (${formatHM(lastSec)})</span>` +
-        `</div>` +
-      `</div>`;
-  }
-
   function renderProjects() {
     const timerRunning = activeSession !== null;
     projectList.innerHTML = '';
     emptyState.hidden = projects.length > 0;
-    renderWeeklySummary();
 
     projects.forEach((p) => {
       const isActive   = timerRunning && activeSession.project_id === p.id;
@@ -555,14 +475,12 @@
   // ── API actions ───────────────────────────────────────────────────────────
 
   async function loadAll() {
-    const [p, a, s] = await Promise.all([
+    const [p, a] = await Promise.all([
       api('GET', '/api/projects'),
       api('GET', '/api/timer/active'),
-      api('GET', '/api/sessions'),
     ]);
     projects      = p;
     activeSession = a;
-    allSessions   = s || [];
 
     if (activeSession) { updateBanner(); startTick(); }
     else { activeBanner.classList.remove('visible'); stopTick(); }
@@ -573,10 +491,6 @@
   async function loadSessions(projectId) {
     const sessions = await api('GET', `/api/sessions/${projectId}`);
     projectSessions[projectId] = sessions;
-  }
-
-  async function loadAllSessions() {
-    allSessions = await api('GET', '/api/sessions');
   }
 
   async function toggleExpand(projectId) {
@@ -651,7 +565,6 @@
       const [allProjects] = await Promise.all([
         api('GET', '/api/projects'),
         loadSessions(projectId),
-        loadAllSessions(),
       ]);
       projects = allProjects;
       renderProjects();
@@ -673,7 +586,6 @@
       const [allProjects] = await Promise.all([
         api('GET', '/api/projects'),
         loadSessions(projectId),
-        loadAllSessions(),
       ]);
       projects = allProjects;
       renderProjects();
@@ -689,7 +601,6 @@
       const [allProjects] = await Promise.all([
         api('GET', '/api/projects'),
         loadSessions(projectId),
-        loadAllSessions(),
       ]);
       projects = allProjects;
       renderProjects();

@@ -3,23 +3,6 @@ const { db } = require('../db');
 
 const router = express.Router();
 
-// GET /api/sessions
-// Returns all completed sessions across every project, newest first.
-// Used by the top-level weekly summary (days worked per week).
-router.get('/', (req, res) => {
-  const sessions = db
-    .prepare(
-      `SELECT s.id, s.project_id, s.start_time, s.end_time, s.duration_seconds,
-              s.is_manual, s.last_notified_at, p.name AS project_name
-       FROM sessions s
-       JOIN projects p ON p.id = s.project_id
-       WHERE s.end_time IS NOT NULL
-       ORDER BY s.start_time DESC, s.id DESC`,
-    )
-    .all();
-  res.json(sessions);
-});
-
 // GET /api/sessions/:project_id
 // Returns all completed sessions for the project, newest first.
 router.get('/:project_id', (req, res) => {
