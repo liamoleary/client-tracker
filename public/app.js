@@ -372,6 +372,13 @@
           }
 
           if (!s._running) {
+            const edit = document.createElement('button');
+            edit.className = 'session-edit';
+            edit.title = 'Edit session duration';
+            edit.textContent = '✎';
+            edit.addEventListener('click', () => showEditSessionModal(s, project.id));
+            item.appendChild(edit);
+
             const del = document.createElement('button');
             del.className = 'session-delete';
             del.title = 'Delete this session';
@@ -521,11 +528,15 @@
     }
   }
 
-  async function stopTimer() {
+  function stopTimer() {
+    showStopConfirmModal();
+  }
+
+  async function confirmStop(durationSeconds) {
     bannerStopBtn.disabled = true;
     const stoppedProjectId = activeSession?.project_id;
     try {
-      await api('POST', '/api/timer/stop');
+      await api('POST', '/api/timer/stop', { duration_seconds: durationSeconds });
       activeSession = null;
       stopTick();
       activeBanner.classList.remove('visible');
@@ -538,6 +549,20 @@
       alert('Could not stop timer: ' + err.message);
     } finally {
       bannerStopBtn.disabled = false;
+    }
+  }
+
+  async function editSessionDuration(sessionId, projectId, durationSeconds) {
+    try {
+      await api('PATCH', `/api/sessions/${sessionId}`, { duration_seconds: durationSeconds });
+      const [allProjects] = await Promise.all([
+        api('GET', '/api/projects'),
+        loadSessions(projectId),
+      ]);
+      projects = allProjects;
+      renderProjects();
+    } catch (err) {
+      alert('Could not update session: ' + err.message);
     }
   }
 
@@ -588,11 +613,184 @@
     }
   }
 
-  // ── Event wiring ──────────────────────────────────────────────────────────
+  // ── Modal ─────────────────────────────────────────────────────────────────
 
-  addProjectBtn.addEventListener('click', addProject);
-  newProjectInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addProject(); });
-  bannerStopBtn.addEventListener('click', stopTimer);
+  // Generic modal: renders content into a centered overlay.
+  // Returns { overlay, close }.
+  function openModal(buildContent) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+
+    const dialog = document.createElement('div');
+    dialog.className = 'modal-dialog';
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+
+    buildContent(dialog);
+
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+
+    // Close on backdrop click
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    // Close on Escape
+    const onKey = (e) => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
+    document.addEventListener('keydown', onKey);
+
+    return { overlay, close };
+  }
+
+  // Shows the stop confirmation modal. Calls confirmStop(durationSeconds) when confirmed.
+  function showStopConfirmModal() {
+    if (!activeSession) return;
+    const elapsedSec = Math.max(0, Math.round((Date.now() - new Date(activeSession.start_time).getTime()) / 1000));
+
+    openModal((dialog) => {
+      let adjustedSec = elapsedSec;
+
+      dialog.innerHTML =
+        `<h2 class="modal-title">Stop timer?</h2>` +
+        `<p class="modal-subtitle"><span class="modal-project">${activeSession.project_name}</span></p>` +
+        `<div class="modal-time-display" id="modal-time-display">${formatSeconds(adjustedSec)}</div>` +
+        `<p class="modal-hint">Adjust the time to log if needed:</p>` +
+        `<div class="modal-adjust-row">` +
+          `<button class="btn-secondary modal-adj" data-delta="-3600">−1h</button>` +
+          `<button class="btn-secondary modal-adj" data-delta="-900">−15m</button>` +
+          `<button class="btn-secondary modal-adj" data-delta="900">+15m</button>` +
+          `<button class="btn-secondary modal-adj" data-delta="3600">+1h</button>` +
+        `</div>` +
+        `<div class="modal-manual-row">` +
+          `<label class="modal-label">Or set directly: ` +
+            `<input type="number" id="modal-hours" class="modal-num-input" min="0" max="999" placeholder="h" />` +
+            `<span class="modal-sep">h</span>` +
+            `<input type="number" id="modal-minutes" class="modal-num-input" min="0" max="59" placeholder="m" />` +
+            `<span class="modal-sep">m</span>` +
+          `</label>` +
+        `</div>` +
+        `<div class="modal-actions">` +
+          `<button class="btn-danger" id="modal-confirm-stop">Stop &amp; Log</button>` +
+          `<button class="btn-link" id="modal-cancel">Keep running</button>` +
+        `</div>`;
+
+      const display  = dialog.querySelector('#modal-time-display');
+      const hoursEl  = dialog.querySelector('#modal-hours');
+      const minsEl   = dialog.querySelector('#modal-minutes');
+
+      function syncDisplay() {
+        display.textContent = formatSeconds(adjustedSec);
+        hoursEl.value  = Math.floor(adjustedSec / 3600);
+        minsEl.value   = Math.floor((adjustedSec % 3600) / 60);
+      }
+      syncDisplay();
+
+      // Adjust buttons
+      dialog.querySelectorAll('.modal-adj').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          adjustedSec = Math.max(60, adjustedSec + Number(btn.dataset.delta));
+          syncDisplay();
+        });
+      });
+
+      // Manual h/m inputs
+      function onManualInput() {
+        const h = Math.max(0, parseInt(hoursEl.value  || '0', 10));
+        const m = Math.max(0, Math.min(59, parseInt(minsEl.value || '0', 10)));
+        const total = h * 3600 + m * 60;
+        if (total > 0) {
+          adjustedSec = total;
+          display.textContent = formatSeconds(adjustedSec);
+        }
+      }
+      hoursEl.addEventListener('input', onManualInput);
+      minsEl.addEventListener('input', onManualInput);
+
+      let modal;
+      dialog.querySelector('#modal-cancel').addEventListener('click', () => modal.close());
+      dialog.querySelector('#modal-confirm-stop').addEventListener('click', async () => {
+        modal.close();
+        await confirmStop(Math.max(60, adjustedSec));
+      });
+
+      // Assign so the cancel button can close it
+      modal = { close: () => dialog.closest('.modal-overlay').remove() };
+    });
+  }
+
+  // Shows an edit-duration modal for a completed session.
+  function showEditSessionModal(session, projectId) {
+    openModal((dialog) => {
+      const currentSec = session.duration_seconds || 0;
+
+      dialog.innerHTML =
+        `<h2 class="modal-title">Edit session time</h2>` +
+        `<p class="modal-subtitle">${fmtDate(session.start_time)}` +
+          (session.end_time ? ` &nbsp;${fmtTime(session.start_time)} – ${fmtTime(session.end_time)}` : '') +
+        `</p>` +
+        `<div class="modal-time-display" id="edit-time-display">${formatSeconds(currentSec)}</div>` +
+        `<div class="modal-adjust-row">` +
+          `<button class="btn-secondary modal-adj" data-delta="-3600">−1h</button>` +
+          `<button class="btn-secondary modal-adj" data-delta="-900">−15m</button>` +
+          `<button class="btn-secondary modal-adj" data-delta="900">+15m</button>` +
+          `<button class="btn-secondary modal-adj" data-delta="3600">+1h</button>` +
+        `</div>` +
+        `<div class="modal-manual-row">` +
+          `<label class="modal-label">Set duration: ` +
+            `<input type="number" id="edit-hours" class="modal-num-input" min="0" max="999" />` +
+            `<span class="modal-sep">h</span>` +
+            `<input type="number" id="edit-minutes" class="modal-num-input" min="0" max="59" />` +
+            `<span class="modal-sep">m</span>` +
+          `</label>` +
+        `</div>` +
+        `<div class="modal-actions">` +
+          `<button class="btn-primary" id="edit-confirm">Save</button>` +
+          `<button class="btn-link" id="edit-cancel">Cancel</button>` +
+        `</div>`;
+
+      const display  = dialog.querySelector('#edit-time-display');
+      const hoursEl  = dialog.querySelector('#edit-hours');
+      const minsEl   = dialog.querySelector('#edit-minutes');
+      let adjustedSec = currentSec;
+
+      function syncDisplay() {
+        display.textContent = formatSeconds(adjustedSec);
+        hoursEl.value = Math.floor(adjustedSec / 3600);
+        minsEl.value  = Math.floor((adjustedSec % 3600) / 60);
+      }
+      syncDisplay();
+
+      dialog.querySelectorAll('.modal-adj').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          adjustedSec = Math.max(60, adjustedSec + Number(btn.dataset.delta));
+          syncDisplay();
+        });
+      });
+
+      function onManualInput() {
+        const h = Math.max(0, parseInt(hoursEl.value  || '0', 10));
+        const m = Math.max(0, Math.min(59, parseInt(minsEl.value || '0', 10)));
+        const total = h * 3600 + m * 60;
+        if (total > 0) {
+          adjustedSec = total;
+          display.textContent = formatSeconds(adjustedSec);
+        }
+      }
+      hoursEl.addEventListener('input', onManualInput);
+      minsEl.addEventListener('input', onManualInput);
+
+      let modal;
+      dialog.querySelector('#edit-cancel').addEventListener('click', () => modal.close());
+      dialog.querySelector('#edit-confirm').addEventListener('click', async () => {
+        const secs = Math.max(60, adjustedSec);
+        modal.close();
+        await editSessionDuration(session.id, projectId, secs);
+      });
+
+      modal = { close: () => dialog.closest('.modal-overlay').remove() };
+    });
+  }
 
   // ── Service worker registration (PWA install + offline shell) ────────────
 
@@ -712,6 +910,12 @@
       console.warn('[status] check failed:', err);
     }
   }
+
+  // ── Event wiring ─────────────────────────────────────────────────────────
+
+  addProjectBtn.addEventListener('click', addProject);
+  newProjectInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addProject(); });
+  bannerStopBtn.addEventListener('click', () => stopTimer());
 
   // ── Boot ─────────────────────────────────────────────────────────────────
 

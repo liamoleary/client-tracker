@@ -79,18 +79,31 @@ router.post('/start', (req, res) => {
 });
 
 // POST /api/timer/stop
+// Optional body: { duration_seconds } — if provided, overrides the calculated duration.
 router.post('/stop', (req, res) => {
   const active = getActiveSession();
   if (!active) {
     return res.status(400).json({ error: 'No timer is running' });
   }
 
-  const endTime = new Date();
   const startTime = new Date(active.start_time);
-  const duration = Math.max(
-    0,
-    Math.round((endTime.getTime() - startTime.getTime()) / 1000),
-  );
+  let duration;
+  let endTime;
+
+  const rawDuration = req.body?.duration_seconds;
+  if (rawDuration !== undefined) {
+    duration = Math.round(Number(rawDuration));
+    if (!Number.isFinite(duration) || duration < 0) {
+      return res.status(400).json({ error: 'invalid duration_seconds' });
+    }
+    endTime = new Date(startTime.getTime() + duration * 1000);
+  } else {
+    endTime = new Date();
+    duration = Math.max(
+      0,
+      Math.round((endTime.getTime() - startTime.getTime()) / 1000),
+    );
+  }
 
   db.prepare(
     'UPDATE sessions SET end_time = ?, duration_seconds = ? WHERE id = ?',

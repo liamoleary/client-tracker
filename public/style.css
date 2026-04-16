@@ -473,7 +473,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 /* ── Session items ─────────────────────────────────────────── */
 .session-item {
   display: grid;
-  grid-template-columns: auto 1fr auto auto auto;
+  grid-template-columns: auto 1fr auto auto auto auto;
   align-items: center;
   gap: 0.4rem 0.6rem;
   padding: 0.45rem 0.75rem;
@@ -591,6 +591,130 @@ button:disabled { opacity: 0.4; cursor: default; }
   padding: 0.5rem 0;
 }
 
+/* ── Session edit button ───────────────────────────────────── */
+.session-edit {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 0.15rem;
+  opacity: 0.35;
+  transition: opacity 0.15s, color 0.15s;
+}
+.session-edit:hover { opacity: 1; color: var(--accent); }
+
+/* ── Modal overlay ─────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.modal-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.modal-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.modal-subtitle {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-top: -0.4rem;
+}
+
+.modal-project {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.modal-time-display {
+  font-size: 2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  text-align: center;
+  padding: 0.5rem 0;
+}
+
+.modal-hint {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-bottom: -0.25rem;
+}
+
+.modal-adjust-row {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: center;
+}
+
+.modal-adjust-row .btn-secondary {
+  flex: 1;
+  font-size: 0.82rem;
+  padding: 0.45rem 0.3rem;
+}
+
+.modal-manual-row {
+  display: flex;
+  justify-content: center;
+}
+
+.modal-label {
+  font-size: 0.82rem;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.modal-num-input {
+  width: 56px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 0.85rem;
+  padding: 0.35rem 0.5rem;
+  outline: none;
+  text-align: center;
+}
+.modal-num-input:focus { border-color: var(--accent); }
+
+.modal-sep {
+  color: var(--muted);
+}
+
+.modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding-top: 0.25rem;
+}
+
+.modal-actions .btn-danger,
+.modal-actions .btn-primary {
+  flex: 1;
+}
+
 /* ── Responsive tweaks ─────────────────────────────────────── */
 @media (max-width: 480px) {
   .session-item {
@@ -601,9 +725,10 @@ button:disabled { opacity: 0.4; cursor: default; }
   .session-time { grid-column: 2; grid-row: 1; text-align: right; }
   .session-duration { grid-column: 1; grid-row: 2; }
   .session-earnings { grid-column: 2; grid-row: 2; text-align: right; }
-  .manual-tag, .running-tag, .session-delete {
+  .manual-tag, .running-tag, .session-edit, .session-delete {
     grid-row: 1 / span 2;
     align-self: center;
   }
-  .session-delete { grid-column: 3; }
+  .session-edit { grid-column: 3; }
+  .session-delete { grid-column: 4; }
 }

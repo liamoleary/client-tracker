@@ -70,6 +70,44 @@ router.post('/', (req, res) => {
   res.status(201).json(session);
 });
 
+// PATCH /api/sessions/:id
+// Updates the duration (and therefore end_time) of a completed session.
+// Body: { duration_seconds }
+router.patch('/:id', (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: 'invalid id' });
+  }
+
+  const session = db
+    .prepare('SELECT id, start_time, end_time FROM sessions WHERE id = ?')
+    .get(id);
+  if (!session) return res.status(404).json({ error: 'session not found' });
+  if (!session.end_time) {
+    return res.status(400).json({ error: 'cannot edit an active session — stop the timer first' });
+  }
+
+  const durationSeconds = Math.round(Number(req.body?.duration_seconds));
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    return res.status(400).json({ error: 'duration_seconds must be a positive number' });
+  }
+
+  const startDate = new Date(session.start_time);
+  const endDate = new Date(startDate.getTime() + durationSeconds * 1000);
+
+  db.prepare('UPDATE sessions SET duration_seconds = ?, end_time = ? WHERE id = ?')
+    .run(durationSeconds, endDate.toISOString(), id);
+
+  const updated = db
+    .prepare(
+      `SELECT id, project_id, start_time, end_time, duration_seconds, is_manual, last_notified_at
+       FROM sessions WHERE id = ?`,
+    )
+    .get(id);
+
+  res.json(updated);
+});
+
 // DELETE /api/sessions/:id
 // Removes a completed session. Active sessions (no end_time) cannot be deleted here.
 router.delete('/:id', (req, res) => {
