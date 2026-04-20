@@ -6,6 +6,19 @@ const router = express.Router();
 const ANCHOR_KEY = 'invoice_anchor_date';
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+// Anchors represent "the Sunday through which invoices have been sent". Users
+// often enter the invoice issue date (a Tue/Wed/whatever) — silently snap
+// down to the most recent Sunday on or before the entered date so fortnight
+// boundaries always land on Mon–Sun.
+function snapToSunday(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr + 'T00:00:00Z');
+  if (isNaN(d.getTime())) return null;
+  const day = d.getUTCDay(); // 0 = Sunday
+  if (day !== 0) d.setUTCDate(d.getUTCDate() - day);
+  return d.toISOString().slice(0, 10);
+}
+
 function readAnchor() {
   const row = db
     .prepare('SELECT value FROM app_settings WHERE key = ?')
@@ -56,8 +69,8 @@ router.get('/status', (req, res) => {
 });
 
 // POST /api/invoice/settings  { anchor: "YYYY-MM-DD" | null }
-// Set the anchor: the Sunday through which invoices have been sent. Pass
-// null to clear.
+// Set the anchor. Any weekday works — we snap to the previous Sunday so the
+// fortnight always aligns to Mon–Sun. Pass null to clear.
 router.post('/settings', (req, res) => {
   const raw = req.body?.anchor;
   if (raw === null) {
@@ -67,26 +80,26 @@ router.post('/settings', (req, res) => {
   if (typeof raw !== 'string' || !DATE_RE.test(raw)) {
     return res.status(400).json({ error: 'anchor must be YYYY-MM-DD or null' });
   }
-  // Basic sanity: must be a real date.
   const d = new Date(raw + 'T00:00:00Z');
   if (isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== raw) {
     return res.status(400).json({ error: 'invalid date' });
   }
-  writeAnchor(raw);
-  res.json({ anchor: raw });
+  const snapped = snapToSunday(raw);
+  writeAnchor(snapped);
+  res.json({ anchor: snapped });
 });
 
 // POST /api/invoice/mark-sent  { through: "YYYY-MM-DD" }
 // Advance the anchor after sending an invoice. `through` is the last day
-// covered by the invoice (a Sunday). Idempotent — later writes just move the
-// anchor forward.
+// covered — snapped to the previous Sunday if not already one.
 router.post('/mark-sent', (req, res) => {
   const through = req.body?.through;
   if (typeof through !== 'string' || !DATE_RE.test(through)) {
     return res.status(400).json({ error: 'through must be YYYY-MM-DD' });
   }
-  writeAnchor(through);
-  res.json({ anchor: through });
+  const snapped = snapToSunday(through);
+  writeAnchor(snapped);
+  res.json({ anchor: snapped });
 });
 
 module.exports = router;

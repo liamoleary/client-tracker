@@ -120,6 +120,26 @@ function initDB() {
     try { db.exec(stmt); } catch (_) { /* already exists */ }
   }
 
+  // Fix-up: earlier versions accepted any date for invoice_anchor_date. Snap
+  // non-Sundays down to the previous Sunday so fortnight boundaries are
+  // always Mon–Sun.
+  try {
+    const row = db
+      .prepare("SELECT value FROM app_settings WHERE key = 'invoice_anchor_date'")
+      .get();
+    if (row?.value) {
+      const d = new Date(row.value + 'T00:00:00Z');
+      if (!isNaN(d.getTime()) && d.getUTCDay() !== 0) {
+        d.setUTCDate(d.getUTCDate() - d.getUTCDay());
+        const snapped = d.toISOString().slice(0, 10);
+        db.prepare(
+          "UPDATE app_settings SET value = ? WHERE key = 'invoice_anchor_date'",
+        ).run(snapped);
+        console.log('[db] snapped invoice_anchor_date ' + row.value + ' → ' + snapped);
+      }
+    }
+  } catch (_) { /* table may not exist yet on very old DBs */ }
+
   logStorageBanner();
 }
 
