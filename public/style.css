@@ -176,19 +176,71 @@ h1 {
 }
 
 .invoice-project-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.35rem 0;
   border-bottom: 1px dashed var(--border);
 }
 .invoice-project-row:last-child { border-bottom: none; }
+
+.invoice-project-head {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.invoice-project-head:hover .invoice-project-name { color: var(--accent-h); }
+
+.invoice-project-head-left {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.invoice-caret {
+  color: var(--muted);
+  font-size: 0.75rem;
+  width: 0.9rem;
+  display: inline-block;
+  transition: transform 120ms ease;
+}
+.invoice-project-row.expanded .invoice-caret { color: var(--success); }
 
 .invoice-project-name { color: var(--text); font-weight: 600; }
 .invoice-project-meta { color: var(--muted); font-size: 0.8rem; margin-top: 0.15rem; }
 .invoice-project-amount {
   color: var(--success);
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.invoice-project-dates {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.35rem 0 0.65rem 1.5rem;
+  font-size: 0.85rem;
+}
+.invoice-project-dates[hidden] { display: none; }
+
+.invoice-date-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.2rem 0;
+}
+
+.invoice-date-label { color: var(--text); }
+.invoice-date-hours {
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }

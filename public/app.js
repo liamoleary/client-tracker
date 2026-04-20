@@ -931,20 +931,21 @@
           id: s.project_id,
           name: s.project_name,
           daily_rate: Number(s.daily_rate) || 0,
-          dates: new Set(),
+          secondsByDate: {},
         };
         byProject.set(s.project_id, entry);
       }
-      entry.dates.add(key);
+      entry.secondsByDate[key] = (entry.secondsByDate[key] || 0) + s.duration_seconds;
     }
     const entries = [...byProject.values()]
       .map((p) => {
-        const dates = [...p.dates].sort();
+        const dates = Object.keys(p.secondsByDate).sort();
         return {
           id: p.id,
           name: p.name,
           daily_rate: p.daily_rate,
           dates,
+          secondsByDate: p.secondsByDate,
           days: dates.length,
           amount: dates.length * p.daily_rate,
         };
@@ -996,27 +997,7 @@
       invoiceBreakdownEl.appendChild(empty);
     } else {
       for (const e of breakdown.entries) {
-        const row = document.createElement('div');
-        row.className = 'invoice-project-row';
-
-        const left = document.createElement('div');
-        const name = document.createElement('div');
-        name.className = 'invoice-project-name';
-        name.textContent = e.name;
-        const meta = document.createElement('div');
-        meta.className = 'invoice-project-meta';
-        meta.textContent =
-          e.days + ' day' + (e.days === 1 ? '' : 's') + ' × ' + fmtMoney(e.daily_rate);
-        left.appendChild(name);
-        left.appendChild(meta);
-
-        const amt = document.createElement('div');
-        amt.className = 'invoice-project-amount';
-        amt.textContent = fmtMoney(e.amount);
-
-        row.appendChild(left);
-        row.appendChild(amt);
-        invoiceBreakdownEl.appendChild(row);
+        invoiceBreakdownEl.appendChild(buildInvoiceProjectRow(e));
       }
     }
 
@@ -1028,6 +1009,85 @@
 
     invoiceCopyBtn.disabled = breakdown.entries.length === 0;
     invoiceBanner.hidden = false;
+  }
+
+  // One expandable row per project in the invoice-due banner. Tap the header
+  // to reveal the exact dates being billed with hours tracked on each day —
+  // helps sanity-check the count before sending the invoice.
+  function buildInvoiceProjectRow(entry) {
+    const row = document.createElement('div');
+    row.className = 'invoice-project-row';
+
+    const head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'invoice-project-head';
+    head.setAttribute('aria-expanded', 'false');
+
+    const left = document.createElement('div');
+    left.className = 'invoice-project-head-left';
+
+    const caret = document.createElement('span');
+    caret.className = 'invoice-caret';
+    caret.textContent = '▸';
+    caret.setAttribute('aria-hidden', 'true');
+
+    const nameBlock = document.createElement('div');
+    const name = document.createElement('div');
+    name.className = 'invoice-project-name';
+    name.textContent = entry.name;
+    const meta = document.createElement('div');
+    meta.className = 'invoice-project-meta';
+    meta.textContent =
+      entry.days + ' day' + (entry.days === 1 ? '' : 's') + ' × ' + fmtMoney(entry.daily_rate);
+    nameBlock.appendChild(name);
+    nameBlock.appendChild(meta);
+
+    left.appendChild(caret);
+    left.appendChild(nameBlock);
+
+    const amt = document.createElement('div');
+    amt.className = 'invoice-project-amount';
+    amt.textContent = fmtMoney(entry.amount);
+
+    head.appendChild(left);
+    head.appendChild(amt);
+
+    const details = document.createElement('div');
+    details.className = 'invoice-project-dates';
+    details.hidden = true;
+    for (const d of entry.dates) {
+      const item = document.createElement('div');
+      item.className = 'invoice-date-item';
+      const label = document.createElement('span');
+      label.className = 'invoice-date-label';
+      label.textContent = formatWeekdayDate(d);
+      const hrs = document.createElement('span');
+      hrs.className = 'invoice-date-hours';
+      hrs.textContent = formatHM(entry.secondsByDate[d] || 0);
+      item.appendChild(label);
+      item.appendChild(hrs);
+      details.appendChild(item);
+    }
+
+    head.addEventListener('click', () => {
+      const nowOpen = details.hidden;
+      details.hidden = !nowOpen;
+      row.classList.toggle('expanded', nowOpen);
+      caret.textContent = nowOpen ? '▾' : '▸';
+      head.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
+    });
+
+    row.appendChild(head);
+    row.appendChild(details);
+    return row;
+  }
+
+  // "Mon 6 Apr" — weekday-prefixed short date for the invoice breakdown.
+  function formatWeekdayDate(dateKey) {
+    const [y, m, d] = dateKey.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+      weekday: 'short', day: 'numeric', month: 'short',
+    });
   }
 
   async function copyInvoiceLineItems() {
