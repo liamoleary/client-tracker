@@ -47,7 +47,7 @@ async function tick(now = new Date()) {
       Math.round((endTime.getTime() - startMs) / 1000),
     );
     db.prepare(
-      'UPDATE sessions SET end_time = ?, duration_seconds = ? WHERE id = ?',
+      'UPDATE sessions SET end_time = ?, duration_seconds = ?, auto_stopped = 1 WHERE id = ?',
     ).run(endTime.toISOString(), durationSec, active.id);
     console.log(
       `[monitor] auto-stopped session ${active.id} (project "${active.project_name}") after 2h silence; duration=${durationSec}s`,

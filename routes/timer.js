@@ -78,38 +78,38 @@ router.post('/start', (req, res) => {
   res.status(201).json(session);
 });
 
-// POST /api/timer/stop
-// Optional body: { duration_seconds } — if provided, overrides the calculated duration.
-router.post('/stop', (req, res) => {
-  const active = getActiveSession();
-  if (!active) {
-    return res.status(400).json({ error: 'No timer is running' });
-  }
+// Window during which a stop request can still amend a recently auto-stopped
+// session. Longer than the 2h auto-stop grace so a user who left the app open
+// overnight still gets their time applied.
+const AUTO_STOP_AMEND_WINDOW_MS = 12 * 60 * 60 * 1000;
 
-  const startTime = new Date(active.start_time);
-  let duration;
-  let endTime;
+// Most recent session auto-stopped by the monitor, if its end_time is within
+// the amend window. Used so a stop click whose banner was still ticking can
+// overwrite the monitor's conservative duration.
+function getAmendableAutoStopped() {
+  return db
+    .prepare(
+      `
+      SELECT
+        s.id,
+        s.project_id,
+        s.start_time,
+        s.end_time,
+        s.duration_seconds,
+        s.last_notified_at,
+        p.name AS project_name
+      FROM sessions s
+      JOIN projects p ON p.id = s.project_id
+      WHERE s.auto_stopped = 1
+      ORDER BY s.end_time DESC
+      LIMIT 1
+      `,
+    )
+    .get();
+}
 
-  const rawDuration = req.body?.duration_seconds;
-  if (rawDuration !== undefined) {
-    duration = Math.round(Number(rawDuration));
-    if (!Number.isFinite(duration) || duration < 0) {
-      return res.status(400).json({ error: 'invalid duration_seconds' });
-    }
-    endTime = new Date(startTime.getTime() + duration * 1000);
-  } else {
-    endTime = new Date();
-    duration = Math.max(
-      0,
-      Math.round((endTime.getTime() - startTime.getTime()) / 1000),
-    );
-  }
-
-  db.prepare(
-    'UPDATE sessions SET end_time = ?, duration_seconds = ? WHERE id = ?',
-  ).run(endTime.toISOString(), duration, active.id);
-
-  const session = db
+function sessionById(id) {
+  return db
     .prepare(
       `
       SELECT
@@ -125,9 +125,61 @@ router.post('/stop', (req, res) => {
       WHERE s.id = ?
       `,
     )
-    .get(active.id);
+    .get(id);
+}
 
-  res.json(session);
+// POST /api/timer/stop
+// Optional body: { duration_seconds } — if provided, overrides the calculated duration.
+router.post('/stop', (req, res) => {
+  const rawDuration = req.body?.duration_seconds;
+  const hasDuration = rawDuration !== undefined;
+  let duration;
+  if (hasDuration) {
+    duration = Math.round(Number(rawDuration));
+    if (!Number.isFinite(duration) || duration < 0) {
+      return res.status(400).json({ error: 'invalid duration_seconds' });
+    }
+  }
+
+  const active = getActiveSession();
+  if (!active) {
+    // No live timer — but if the monitor auto-stopped a session recently and
+    // the client was still ticking against it, let this stop amend that
+    // session's duration rather than reject the user's intent.
+    if (hasDuration) {
+      const recent = getAmendableAutoStopped();
+      if (recent) {
+        const endedMs = new Date(recent.end_time).getTime();
+        if (Date.now() - endedMs <= AUTO_STOP_AMEND_WINDOW_MS) {
+          const startMs = new Date(recent.start_time).getTime();
+          const newEnd = new Date(startMs + duration * 1000);
+          db.prepare(
+            'UPDATE sessions SET end_time = ?, duration_seconds = ?, auto_stopped = 0 WHERE id = ?',
+          ).run(newEnd.toISOString(), duration, recent.id);
+          return res.json(sessionById(recent.id));
+        }
+      }
+    }
+    return res.status(400).json({ error: 'No timer is running' });
+  }
+
+  const startTime = new Date(active.start_time);
+  let endTime;
+  if (hasDuration) {
+    endTime = new Date(startTime.getTime() + duration * 1000);
+  } else {
+    endTime = new Date();
+    duration = Math.max(
+      0,
+      Math.round((endTime.getTime() - startTime.getTime()) / 1000),
+    );
+  }
+
+  db.prepare(
+    'UPDATE sessions SET end_time = ?, duration_seconds = ? WHERE id = ?',
+  ).run(endTime.toISOString(), duration, active.id);
+
+  res.json(sessionById(active.id));
 });
 
 // POST /api/timer/confirm

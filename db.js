@@ -110,6 +110,7 @@ function initDB() {
   for (const stmt of [
     'ALTER TABLE projects ADD COLUMN daily_rate REAL NOT NULL DEFAULT 650',
     'ALTER TABLE sessions ADD COLUMN is_manual INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE sessions ADD COLUMN auto_stopped INTEGER NOT NULL DEFAULT 0',
   ]) {
     try { db.exec(stmt); } catch (_) { /* already exists */ }
   }
