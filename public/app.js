@@ -553,7 +553,24 @@
         renderProjects();
       }
     } catch (err) {
-      alert('Could not stop timer: ' + err.message);
+      // The server may have already closed the session (2h idle auto-stop, or
+      // a "No, stop timer" tap on a check-in notification). Resync rather than
+      // leaving the banner on a timer that no longer exists.
+      if (/no timer is running/i.test(err.message)) {
+        activeSession = null;
+        stopTick();
+        activeBanner.classList.remove('visible');
+        await loadAll();
+        if (stoppedProjectId && expandedProjects.has(stoppedProjectId)) {
+          await loadSessions(stoppedProjectId);
+          renderProjects();
+        }
+        alert(
+          'That timer had already been stopped on the server — likely by the 2-hour idle auto-stop or a tap on "No, stop timer" in a check-in notification. The list has been refreshed; tap ✎ on the latest session if you need to adjust its duration.',
+        );
+      } else {
+        alert('Could not stop timer: ' + err.message);
+      }
     } finally {
       bannerStopBtn.disabled = false;
     }
