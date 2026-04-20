@@ -146,6 +146,8 @@
   let projectSessions = {};         // { [projectId]: completedSession[] }
   let invoiceAnchor = null;         // "YYYY-MM-DD" — last Sunday we've invoiced through, or null.
   let invoiceSessions = [];         // raw sessions since the anchor (for fortnight rollup).
+  let invoiceProjectsMeta = {};     // { [projectId]: { hours_banked_seconds } } from the server.
+  let invoiceDaysOverride = {};     // { [projectId]: invoicedDays } — user-adjusted day counts.
 
   // ── DOM refs ─────────────────────────────────────────────────────────────
 
@@ -917,10 +919,21 @@
     return { start, end };
   }
 
+  // Fortnight rollup with banking:
+  //   • tracked_seconds  = time tracked in the period
+  //   • banked_seconds   = carry-in from previous cycles (can be negative)
+  //   • total_seconds    = tracked + banked → the hours we're rounding
+  //   • suggested_days   = round(total_seconds / 8h)      (never below 0)
+  //   • days             = user override, or suggested_days
+  //   • new_banked       = total_seconds − days × 8h      (carries forward)
+  //
+  // A project appears in the breakdown if it has tracked time in the period
+  // OR a non-zero banked balance (so old bank dust doesn't get stranded).
   function computeInvoiceBreakdown(sessions, period) {
     const startKey = localDateKey(period.start);
     const endKey   = localDateKey(period.end);
     const byProject = new Map();
+
     for (const s of sessions) {
       if (!s.duration_seconds || s.duration_seconds <= 0) continue;
       const key = localDateKey(new Date(s.start_time));
@@ -937,17 +950,47 @@
       }
       entry.secondsByDate[key] = (entry.secondsByDate[key] || 0) + s.duration_seconds;
     }
+
+    // Fold in projects that have no tracked time this fortnight but do have a
+    // non-zero banked balance — otherwise the user has no way to draw it down.
+    for (const p of (projects || [])) {
+      const meta = invoiceProjectsMeta[p.id];
+      const banked = Number(meta?.hours_banked_seconds) || 0;
+      if (!byProject.has(p.id) && banked !== 0) {
+        byProject.set(p.id, {
+          id: p.id,
+          name: p.name,
+          daily_rate: Number(p.daily_rate) || 0,
+          secondsByDate: {},
+        });
+      }
+    }
+
+    const perDay = HOURS_PER_DAY * 3600;
     const entries = [...byProject.values()]
       .map((p) => {
         const dates = Object.keys(p.secondsByDate).sort();
+        const trackedSeconds = dates.reduce((t, k) => t + p.secondsByDate[k], 0);
+        const bankedIn = Number(invoiceProjectsMeta[p.id]?.hours_banked_seconds) || 0;
+        const totalSeconds = trackedSeconds + bankedIn;
+        const suggestedDays = Math.max(0, Math.round(totalSeconds / perDay));
+        const override = invoiceDaysOverride[p.id];
+        const days = Number.isFinite(override) ? Math.max(0, override) : suggestedDays;
+        const bankedOut = totalSeconds - days * perDay;
         return {
           id: p.id,
           name: p.name,
           daily_rate: p.daily_rate,
           dates,
           secondsByDate: p.secondsByDate,
-          days: dates.length,
-          amount: dates.length * p.daily_rate,
+          trackedSeconds,
+          bankedIn,
+          totalSeconds,
+          suggestedDays,
+          days,
+          bankedOut,
+          isOverride: Number.isFinite(override) && override !== suggestedDays,
+          amount: days * p.daily_rate,
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -960,10 +1003,17 @@
       const s = await api('GET', '/api/invoice/status');
       invoiceAnchor = s.anchor || null;
       invoiceSessions = s.sessions || [];
+      invoiceProjectsMeta = {};
+      for (const p of (s.projects || [])) {
+        invoiceProjectsMeta[p.id] = {
+          hours_banked_seconds: Number(p.hours_banked_seconds) || 0,
+        };
+      }
     } catch (err) {
       console.warn('[invoice] failed to load status:', err);
       invoiceAnchor = null;
       invoiceSessions = [];
+      invoiceProjectsMeta = {};
     }
     renderInvoice();
   }
@@ -1004,16 +1054,27 @@
     // Stash data the action handlers need.
     invoiceBanner.dataset.throughDate = localDateKey(period.end);
     invoiceBanner.dataset.lineItems = breakdown.entries
-      .flatMap((e) => e.dates.map((d) => formatOrdinalDate(d) + ' - ' + e.name))
+      .filter((e) => e.days > 0)
+      .map((e) =>
+        e.name + ' — ' + e.days + ' day' + (e.days === 1 ? '' : 's') +
+        ' @ ' + fmtMoney(e.daily_rate) + ' = ' + fmtMoney(e.amount),
+      )
       .join('\n');
+    invoiceBanner.dataset.invoicedPayload = JSON.stringify(
+      breakdown.entries.map((e) => ({
+        project_id: e.id,
+        tracked_seconds: Math.round(e.trackedSeconds),
+        invoiced_days: e.days,
+      })),
+    );
 
-    invoiceCopyBtn.disabled = breakdown.entries.length === 0;
+    invoiceCopyBtn.disabled = breakdown.entries.every((e) => e.days === 0);
     invoiceBanner.hidden = false;
   }
 
-  // One expandable row per project in the invoice-due banner. Tap the header
-  // to reveal the exact dates being billed with hours tracked on each day —
-  // helps sanity-check the count before sending the invoice.
+  // One expandable row per project in the invoice-due banner. Header shows
+  // the suggested day count with ▼/▲ nudges; expanded body shows per-day
+  // tracked hours plus the banked-hours math that drove the suggestion.
   function buildInvoiceProjectRow(entry) {
     const row = document.createElement('div');
     row.className = 'invoice-project-row';
@@ -1037,8 +1098,7 @@
     name.textContent = entry.name;
     const meta = document.createElement('div');
     meta.className = 'invoice-project-meta';
-    meta.textContent =
-      entry.days + ' day' + (entry.days === 1 ? '' : 's') + ' × ' + fmtMoney(entry.daily_rate);
+    meta.textContent = buildRowMetaText(entry);
     nameBlock.appendChild(name);
     nameBlock.appendChild(meta);
 
@@ -1055,18 +1115,71 @@
     const details = document.createElement('div');
     details.className = 'invoice-project-dates';
     details.hidden = true;
-    for (const d of entry.dates) {
-      const item = document.createElement('div');
-      item.className = 'invoice-date-item';
-      const label = document.createElement('span');
-      label.className = 'invoice-date-label';
-      label.textContent = formatWeekdayDate(d);
-      const hrs = document.createElement('span');
-      hrs.className = 'invoice-date-hours';
-      hrs.textContent = formatHM(entry.secondsByDate[d] || 0);
-      item.appendChild(label);
-      item.appendChild(hrs);
-      details.appendChild(item);
+
+    // Day-count adjuster — nudges the invoiced days up/down one at a time.
+    const adjuster = document.createElement('div');
+    adjuster.className = 'invoice-day-adjuster';
+
+    const adjLabel = document.createElement('span');
+    adjLabel.className = 'invoice-day-adjuster-label';
+    adjLabel.textContent = 'Invoice';
+
+    const decBtn = document.createElement('button');
+    decBtn.type = 'button';
+    decBtn.className = 'invoice-day-btn';
+    decBtn.setAttribute('aria-label', 'Bill one fewer day');
+    decBtn.textContent = '−';
+
+    const dayCount = document.createElement('span');
+    dayCount.className = 'invoice-day-count';
+    dayCount.textContent = entry.days + (entry.days === 1 ? ' day' : ' days');
+
+    const incBtn = document.createElement('button');
+    incBtn.type = 'button';
+    incBtn.className = 'invoice-day-btn';
+    incBtn.setAttribute('aria-label', 'Bill one more day');
+    incBtn.textContent = '+';
+
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.className = 'btn-link invoice-day-reset';
+    reset.textContent = 'Reset';
+    reset.hidden = !entry.isOverride;
+
+    decBtn.disabled = entry.days <= 0;
+
+    adjuster.appendChild(adjLabel);
+    adjuster.appendChild(decBtn);
+    adjuster.appendChild(dayCount);
+    adjuster.appendChild(incBtn);
+    adjuster.appendChild(reset);
+    details.appendChild(adjuster);
+
+    // Banking math — visible so the user can see where the number came from.
+    const bankLine = document.createElement('div');
+    bankLine.className = 'invoice-bank-line';
+    bankLine.textContent = buildBankLineText(entry);
+    details.appendChild(bankLine);
+
+    // Per-day breakdown.
+    if (entry.dates.length > 0) {
+      const datesHdr = document.createElement('div');
+      datesHdr.className = 'invoice-dates-header';
+      datesHdr.textContent = 'Tracked this fortnight';
+      details.appendChild(datesHdr);
+      for (const d of entry.dates) {
+        const item = document.createElement('div');
+        item.className = 'invoice-date-item';
+        const label = document.createElement('span');
+        label.className = 'invoice-date-label';
+        label.textContent = formatWeekdayDate(d);
+        const hrs = document.createElement('span');
+        hrs.className = 'invoice-date-hours';
+        hrs.textContent = formatHM(entry.secondsByDate[d] || 0);
+        item.appendChild(label);
+        item.appendChild(hrs);
+        details.appendChild(item);
+      }
     }
 
     head.addEventListener('click', () => {
@@ -1077,9 +1190,49 @@
       head.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
     });
 
+    decBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      invoiceDaysOverride[entry.id] = Math.max(0, entry.days - 1);
+      renderInvoice();
+    });
+    incBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      invoiceDaysOverride[entry.id] = entry.days + 1;
+      renderInvoice();
+    });
+    reset.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      delete invoiceDaysOverride[entry.id];
+      renderInvoice();
+    });
+
     row.appendChild(head);
     row.appendChild(details);
     return row;
+  }
+
+  function buildRowMetaText(entry) {
+    const base = entry.days + ' day' + (entry.days === 1 ? '' : 's') +
+                 ' × ' + fmtMoney(entry.daily_rate);
+    if (entry.bankedIn === 0 && entry.bankedOut === 0) return base;
+    return base + ' · banking ' + formatSignedHM(entry.bankedOut);
+  }
+
+  function buildBankLineText(entry) {
+    const tracked = formatHM(entry.trackedSeconds);
+    const inPart  = entry.bankedIn === 0 ? '' : ' + banked ' + formatSignedHM(entry.bankedIn);
+    const total   = formatSignedHM(entry.totalSeconds);
+    const out     = formatSignedHM(entry.bankedOut);
+    return tracked + inPart + ' = ' + total +
+           ' → ' + entry.days + (entry.days === 1 ? ' day' : ' days') +
+           ' · carry forward ' + out;
+  }
+
+  // Signed "Hh Mm" — negative values get a leading "-". Used for banked
+  // balances which can go negative when a fortnight is rounded up.
+  function formatSignedHM(seconds) {
+    const sign = seconds < 0 ? '-' : '';
+    return sign + formatHM(Math.abs(seconds));
   }
 
   // "Mon 6 Apr" — weekday-prefixed short date for the invoice breakdown.
@@ -1110,7 +1263,11 @@
     if (!confirm('Mark this fortnight as invoiced? The reminder will move on to the next period.')) return;
     invoiceMarkBtn.disabled = true;
     try {
-      await api('POST', '/api/invoice/mark-sent', { through });
+      let invoiced = [];
+      try { invoiced = JSON.parse(invoiceBanner.dataset.invoicedPayload || '[]'); }
+      catch (_) { invoiced = []; }
+      await api('POST', '/api/invoice/mark-sent', { through, invoiced });
+      invoiceDaysOverride = {};
       await loadInvoiceStatus();
     } catch (err) {
       alert('Could not update invoice status: ' + err.message);

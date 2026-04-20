@@ -245,6 +245,58 @@ h1 {
   white-space: nowrap;
 }
 
+.invoice-day-adjuster {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.35rem 0;
+}
+.invoice-day-adjuster-label {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.invoice-day-btn {
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #1a1a1f;
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.invoice-day-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.invoice-day-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.invoice-day-count {
+  min-width: 3.5rem;
+  text-align: center;
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.invoice-day-reset { font-size: 0.8rem; }
+.invoice-day-reset[hidden] { display: none; }
+
+.invoice-bank-line {
+  color: var(--muted);
+  font-size: 0.8rem;
+  padding: 0.15rem 0 0.45rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.invoice-dates-header {
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.25rem 0 0.15rem;
+}
+
 .invoice-actions {
   display: flex;
   gap: 0.5rem;

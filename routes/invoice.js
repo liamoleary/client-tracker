@@ -60,12 +60,16 @@ function sessionsSinceAnchor(anchor) {
 }
 
 // GET /api/invoice/status
-// Returns current anchor + raw sessions since anchor. The client computes
-// the fortnight boundaries and per-project day counts in its local tz so the
-// billing days line up with what the user sees in the rest of the UI.
+// Returns current anchor + raw sessions since anchor + per-project banked
+// hours. The client computes the fortnight boundaries and per-project day
+// counts in its local tz so the billing days line up with what the user sees
+// in the rest of the UI.
 router.get('/status', (req, res) => {
   const anchor = readAnchor();
-  res.json({ anchor, sessions: sessionsSinceAnchor(anchor) });
+  const projects = db
+    .prepare('SELECT id, name, daily_rate, hours_banked_seconds FROM projects')
+    .all();
+  res.json({ anchor, sessions: sessionsSinceAnchor(anchor), projects });
 });
 
 // POST /api/invoice/settings  { anchor: "YYYY-MM-DD" | null }
@@ -89,16 +93,43 @@ router.post('/settings', (req, res) => {
   res.json({ anchor: snapped });
 });
 
-// POST /api/invoice/mark-sent  { through: "YYYY-MM-DD" }
-// Advance the anchor after sending an invoice. `through` is the last day
-// covered — snapped to the previous Sunday if not already one.
+// POST /api/invoice/mark-sent
+//   {
+//     through: "YYYY-MM-DD",
+//     invoiced: [{ project_id, tracked_seconds, invoiced_days }]
+//   }
+// Advance the anchor and update each project's banked-hours balance:
+//   banked_new = banked_prev + tracked_seconds − invoiced_days × 8h
+// So if you round down, the leftover tracked time banks positive; if you
+// round up, the balance goes negative (you've pre-billed future work).
+const SECONDS_PER_BILLABLE_DAY = 8 * 3600;
+
 router.post('/mark-sent', (req, res) => {
   const through = req.body?.through;
   if (typeof through !== 'string' || !DATE_RE.test(through)) {
     return res.status(400).json({ error: 'through must be YYYY-MM-DD' });
   }
+  const invoiced = Array.isArray(req.body?.invoiced) ? req.body.invoiced : [];
+
+  const updateBanked = db.prepare(
+    'UPDATE projects SET hours_banked_seconds = hours_banked_seconds + ? WHERE id = ?',
+  );
   const snapped = snapToSunday(through);
-  writeAnchor(snapped);
+
+  const apply = db.transaction(() => {
+    for (const item of invoiced) {
+      const pid = Number(item?.project_id);
+      const tracked = Number(item?.tracked_seconds);
+      const days = Number(item?.invoiced_days);
+      if (!Number.isFinite(pid) || pid <= 0) continue;
+      if (!Number.isFinite(tracked) || !Number.isFinite(days)) continue;
+      const delta = Math.round(tracked - days * SECONDS_PER_BILLABLE_DAY);
+      updateBanked.run(delta, pid);
+    }
+    writeAnchor(snapped);
+  });
+  apply();
+
   res.json({ anchor: snapped });
 });
 
