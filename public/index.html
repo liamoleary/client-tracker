@@ -37,6 +37,35 @@
     <div class="container">
       <h1>Time Tracker</h1>
 
+      <!-- Invoice-due banner (shown when the current fortnight is ready to bill) -->
+      <section id="invoice-banner" class="invoice-banner" hidden aria-label="Invoice due">
+        <div class="invoice-banner-head">
+          <div>
+            <div class="invoice-title" id="invoice-title">Invoice due</div>
+            <div class="invoice-period" id="invoice-period"></div>
+          </div>
+          <div class="invoice-total" id="invoice-total"></div>
+        </div>
+        <div class="invoice-breakdown" id="invoice-breakdown"></div>
+        <div class="invoice-actions">
+          <button class="btn-secondary" id="invoice-copy-btn" type="button">Copy line items</button>
+          <button class="btn-primary" id="invoice-mark-sent-btn" type="button">Mark as invoiced</button>
+          <button class="btn-link" id="invoice-settings-btn" type="button">Settings</button>
+        </div>
+      </section>
+
+      <!-- Invoice setup prompt (shown when no anchor date has been set) -->
+      <section id="invoice-setup" class="invoice-setup" hidden aria-label="Invoice setup">
+        <p>Set your last-invoiced date to get fortnightly invoice reminders.</p>
+        <form id="invoice-setup-form" class="invoice-setup-form" autocomplete="off">
+          <label>Last invoiced through (Sunday):
+            <input type="date" id="invoice-setup-date" required />
+          </label>
+          <button type="submit" class="btn-secondary">Save</button>
+          <button type="button" class="btn-link" id="invoice-setup-dismiss">Not now</button>
+        </form>
+      </section>
+
       <!-- Ephemeral storage warning (shown only when the server reports it) -->
       <section id="storage-warning" class="danger-banner" hidden>
         <div class="danger-title">⚠ Your data is not being saved</div>

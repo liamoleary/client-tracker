@@ -127,6 +127,111 @@ h1 {
 }
 .app-footer a:hover { color: var(--accent-h); text-decoration: underline; }
 
+/* ── Invoice-due banner ─────────────────────────────────────── */
+.invoice-banner {
+  background: #14231a;
+  border: 1px solid #2e6b44;
+  border-left: 4px solid var(--success);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+  margin-bottom: 1.25rem;
+}
+
+.invoice-banner[hidden] { display: none; }
+
+.invoice-banner-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.invoice-title {
+  font-weight: 700;
+  color: var(--success);
+  font-size: 1.05rem;
+}
+
+.invoice-period {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-top: 0.1rem;
+}
+
+.invoice-total {
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.invoice-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.85rem;
+  font-size: 0.88rem;
+}
+
+.invoice-project-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px dashed var(--border);
+}
+.invoice-project-row:last-child { border-bottom: none; }
+
+.invoice-project-name { color: var(--text); font-weight: 600; }
+.invoice-project-meta { color: var(--muted); font-size: 0.8rem; margin-top: 0.15rem; }
+.invoice-project-amount {
+  color: var(--success);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.invoice-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.invoice-setup {
+  background: #1a1a1f;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+  margin-bottom: 1.25rem;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+.invoice-setup[hidden] { display: none; }
+.invoice-setup p { margin-bottom: 0.6rem; }
+.invoice-setup-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.invoice-setup-form label {
+  color: var(--text);
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.invoice-setup-form input[type="date"] {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  color-scheme: dark;
+}
+
 /* ── Notification banner ────────────────────────────────────── */
 #notifications-banner {
   display: flex;

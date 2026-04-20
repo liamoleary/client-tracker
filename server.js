@@ -9,6 +9,7 @@ const { router: timerRouter } = require('./routes/timer');
 const { router: pushRouter, configureWebPush } = require('./routes/push');
 const sessionsRouter = require('./routes/sessions');
 const backupRouter = require('./routes/backup');
+const invoiceRouter = require('./routes/invoice');
 const timerMonitor = require('./jobs/timerMonitor');
 
 const app = express();
@@ -42,6 +43,7 @@ app.use('/api/projects', projectsRouter);
 app.use('/api/timer', timerRouter);
 app.use('/api/push', pushRouter);
 app.use('/api/sessions', sessionsRouter);
+app.use('/api/invoice', invoiceRouter);
 app.use('/api', backupRouter);
 
 // Start the background monitor (hourly check-in + 2h auto-stop).

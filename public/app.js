@@ -51,6 +51,50 @@
     });
   }
 
+  // "YYYY-MM-DD" in the user's local tz — used for grouping sessions into
+  // billable work-days consistently with what the rest of the UI displays.
+  function localDateKey(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  function addDays(date, n) {
+    const d = new Date(date);
+    d.setDate(d.getDate() + n);
+    return d;
+  }
+
+  function ordinal(n) {
+    const rem100 = n % 100;
+    if (rem100 >= 11 && rem100 <= 13) return n + 'th';
+    switch (n % 10) {
+      case 1: return n + 'st';
+      case 2: return n + 'nd';
+      case 3: return n + 'rd';
+      default: return n + 'th';
+    }
+  }
+
+  // "25th March 2026" — matches the user's Xero invoice line-item format.
+  function formatOrdinalDate(dateKey) {
+    const [y, m, d] = dateKey.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    const monthName = date.toLocaleDateString(undefined, { month: 'long' });
+    return `${ordinal(d)} ${monthName} ${y}`;
+  }
+
+  function formatInvoicePeriod(startDate, endDate) {
+    const shortOpts = { day: 'numeric', month: 'short' };
+    const longOpts  = { day: 'numeric', month: 'short', year: 'numeric' };
+    return (
+      startDate.toLocaleDateString(undefined, shortOpts) +
+      ' – ' +
+      endDate.toLocaleDateString(undefined, longOpts)
+    );
+  }
+
   // Returns the ISO date string (YYYY-MM-DD) for the Monday of the week
   // containing the given date string.
   function weekKey(isoStr) {
@@ -100,6 +144,8 @@
   let tickIntervalId = null;
   let expandedProjects = new Set(); // project ids currently showing details
   let projectSessions = {};         // { [projectId]: completedSession[] }
+  let invoiceAnchor = null;         // "YYYY-MM-DD" — last Sunday we've invoiced through, or null.
+  let invoiceSessions = [];         // raw sessions since the anchor (for fortnight rollup).
 
   // ── DOM refs ─────────────────────────────────────────────────────────────
 
@@ -112,6 +158,18 @@
   const notifBanner     = document.getElementById('notifications-banner');
   const notifStatusEl   = document.getElementById('notifications-status');
   const enableNotifBtn  = document.getElementById('enable-notifications-btn');
+
+  const invoiceBanner     = document.getElementById('invoice-banner');
+  const invoicePeriodEl   = document.getElementById('invoice-period');
+  const invoiceTotalEl    = document.getElementById('invoice-total');
+  const invoiceBreakdownEl= document.getElementById('invoice-breakdown');
+  const invoiceCopyBtn    = document.getElementById('invoice-copy-btn');
+  const invoiceMarkBtn    = document.getElementById('invoice-mark-sent-btn');
+  const invoiceSettingsBtn= document.getElementById('invoice-settings-btn');
+  const invoiceSetup      = document.getElementById('invoice-setup');
+  const invoiceSetupForm  = document.getElementById('invoice-setup-form');
+  const invoiceSetupDate  = document.getElementById('invoice-setup-date');
+  const invoiceSetupDismiss = document.getElementById('invoice-setup-dismiss');
 
   const newProjectInput = document.getElementById('new-project-input');
   const addProjectBtn   = document.getElementById('add-project-btn');
@@ -486,6 +544,7 @@
     else { activeBanner.classList.remove('visible'); stopTick(); }
 
     renderProjects();
+    loadInvoiceStatus().catch(console.error);
   }
 
   async function loadSessions(projectId) {
@@ -585,6 +644,7 @@
       ]);
       projects = allProjects;
       renderProjects();
+      loadInvoiceStatus().catch(console.error);
     } catch (err) {
       alert('Could not update session: ' + err.message);
     }
@@ -606,6 +666,7 @@
       ]);
       projects = allProjects;
       renderProjects();
+      loadInvoiceStatus().catch(console.error);
     } catch (err) {
       alert('Could not add time: ' + err.message);
     }
@@ -621,6 +682,7 @@
       ]);
       projects = allProjects;
       renderProjects();
+      loadInvoiceStatus().catch(console.error);
     } catch (err) {
       alert('Could not delete session: ' + err.message);
     }
@@ -632,6 +694,7 @@
       const idx = projects.findIndex((p) => p.id === projectId);
       if (idx !== -1) projects[idx].daily_rate = updated.daily_rate;
       renderProjects();
+      loadInvoiceStatus().catch(console.error);
     } catch (err) {
       alert('Could not update rate: ' + err.message);
     }
@@ -816,6 +879,186 @@
     });
   }
 
+  // ── Invoice reminder ─────────────────────────────────────────────────────
+  //
+  // Anchor = "YYYY-MM-DD" of the last Sunday we've invoiced through. The
+  // "current fortnight" is anchor+1 (Monday) through anchor+14 (Sunday).
+  // We show the invoice-due banner when today's local date is strictly after
+  // the period end (i.e. the fortnight has fully closed).
+
+  function computeInvoicePeriod(anchorStr) {
+    const anchor = new Date(anchorStr + 'T00:00:00');
+    if (isNaN(anchor.getTime())) return null;
+    const start = addDays(anchor, 1);
+    const end = addDays(anchor, 14);
+    const todayKey = localDateKey(new Date());
+    const endKey   = localDateKey(end);
+    return { start, end, due: todayKey > endKey };
+  }
+
+  function computeInvoiceBreakdown(sessions, period) {
+    const startKey = localDateKey(period.start);
+    const endKey   = localDateKey(period.end);
+    const byProject = new Map();
+    for (const s of sessions) {
+      if (!s.duration_seconds || s.duration_seconds <= 0) continue;
+      const key = localDateKey(new Date(s.start_time));
+      if (key < startKey || key > endKey) continue;
+      let entry = byProject.get(s.project_id);
+      if (!entry) {
+        entry = {
+          id: s.project_id,
+          name: s.project_name,
+          daily_rate: Number(s.daily_rate) || 0,
+          dates: new Set(),
+        };
+        byProject.set(s.project_id, entry);
+      }
+      entry.dates.add(key);
+    }
+    const entries = [...byProject.values()]
+      .map((p) => {
+        const dates = [...p.dates].sort();
+        return {
+          id: p.id,
+          name: p.name,
+          daily_rate: p.daily_rate,
+          dates,
+          days: dates.length,
+          amount: dates.length * p.daily_rate,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const total = entries.reduce((s, e) => s + e.amount, 0);
+    return { entries, total };
+  }
+
+  async function loadInvoiceStatus() {
+    try {
+      const s = await api('GET', '/api/invoice/status');
+      invoiceAnchor = s.anchor || null;
+      invoiceSessions = s.sessions || [];
+    } catch (err) {
+      console.warn('[invoice] failed to load status:', err);
+      invoiceAnchor = null;
+      invoiceSessions = [];
+    }
+    renderInvoice();
+  }
+
+  function renderInvoice() {
+    // No anchor → show the one-time setup prompt so the user can opt in.
+    if (!invoiceAnchor) {
+      invoiceBanner.hidden = true;
+      invoiceSetup.hidden = false;
+      return;
+    }
+
+    const period = computeInvoicePeriod(invoiceAnchor);
+    invoiceSetup.hidden = true;
+
+    if (!period || !period.due) {
+      invoiceBanner.hidden = true;
+      return;
+    }
+
+    const breakdown = computeInvoiceBreakdown(invoiceSessions, period);
+
+    invoicePeriodEl.textContent = 'For ' + formatInvoicePeriod(period.start, period.end);
+    invoiceTotalEl.textContent  = fmtMoney(breakdown.total);
+
+    invoiceBreakdownEl.innerHTML = '';
+    if (breakdown.entries.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'invoice-project-meta';
+      empty.textContent = 'No tracked work in this period — still want to mark it invoiced?';
+      invoiceBreakdownEl.appendChild(empty);
+    } else {
+      for (const e of breakdown.entries) {
+        const row = document.createElement('div');
+        row.className = 'invoice-project-row';
+
+        const left = document.createElement('div');
+        const name = document.createElement('div');
+        name.className = 'invoice-project-name';
+        name.textContent = e.name;
+        const meta = document.createElement('div');
+        meta.className = 'invoice-project-meta';
+        meta.textContent =
+          e.days + ' day' + (e.days === 1 ? '' : 's') + ' × ' + fmtMoney(e.daily_rate);
+        left.appendChild(name);
+        left.appendChild(meta);
+
+        const amt = document.createElement('div');
+        amt.className = 'invoice-project-amount';
+        amt.textContent = fmtMoney(e.amount);
+
+        row.appendChild(left);
+        row.appendChild(amt);
+        invoiceBreakdownEl.appendChild(row);
+      }
+    }
+
+    // Stash data the action handlers need.
+    invoiceBanner.dataset.throughDate = localDateKey(period.end);
+    invoiceBanner.dataset.lineItems = breakdown.entries
+      .flatMap((e) => e.dates.map((d) => formatOrdinalDate(d) + ' - ' + e.name))
+      .join('\n');
+
+    invoiceCopyBtn.disabled = breakdown.entries.length === 0;
+    invoiceBanner.hidden = false;
+  }
+
+  async function copyInvoiceLineItems() {
+    const text = invoiceBanner.dataset.lineItems || '';
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      const prev = invoiceCopyBtn.textContent;
+      invoiceCopyBtn.textContent = 'Copied!';
+      setTimeout(() => { invoiceCopyBtn.textContent = prev; }, 1500);
+    } catch (err) {
+      // Clipboard API may be blocked (e.g. non-secure context) — fall back to prompt.
+      prompt('Copy the invoice line items:', text);
+    }
+  }
+
+  async function markInvoiceSent() {
+    const through = invoiceBanner.dataset.throughDate;
+    if (!through) return;
+    if (!confirm('Mark this fortnight as invoiced? The reminder will move on to the next period.')) return;
+    invoiceMarkBtn.disabled = true;
+    try {
+      await api('POST', '/api/invoice/mark-sent', { through });
+      await loadInvoiceStatus();
+    } catch (err) {
+      alert('Could not update invoice status: ' + err.message);
+    } finally {
+      invoiceMarkBtn.disabled = false;
+    }
+  }
+
+  async function submitInvoiceSetup(e) {
+    e.preventDefault();
+    const anchor = invoiceSetupDate.value;
+    if (!anchor) return;
+    try {
+      await api('POST', '/api/invoice/settings', { anchor });
+      await loadInvoiceStatus();
+    } catch (err) {
+      alert('Could not save: ' + err.message);
+    }
+  }
+
+  function openInvoiceSettings() {
+    if (invoiceAnchor) invoiceSetupDate.value = invoiceAnchor;
+    invoiceSetup.hidden = false;
+  }
+
+  function dismissInvoiceSetup() {
+    invoiceSetup.hidden = true;
+  }
+
   // ── Service worker registration (PWA install + offline shell) ────────────
 
   if ('serviceWorker' in navigator) {
@@ -941,9 +1184,16 @@
   newProjectInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addProject(); });
   bannerStopBtn.addEventListener('click', () => stopTimer());
 
+  invoiceCopyBtn.addEventListener('click', copyInvoiceLineItems);
+  invoiceMarkBtn.addEventListener('click', markInvoiceSent);
+  invoiceSettingsBtn.addEventListener('click', openInvoiceSettings);
+  invoiceSetupForm.addEventListener('submit', submitInvoiceSetup);
+  invoiceSetupDismiss.addEventListener('click', dismissInvoiceSetup);
+
   // ── Boot ─────────────────────────────────────────────────────────────────
 
   loadAll().catch(console.error);
   initPush().catch(console.error);
   checkStorage().catch(console.error);
+  loadInvoiceStatus().catch(console.error);
 })();
