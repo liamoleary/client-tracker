@@ -177,6 +177,7 @@
 
   const bankedSection     = document.getElementById('banked-section');
   const bankedListEl      = document.getElementById('banked-list');
+  const invoiceRewindBtn  = document.getElementById('invoice-rewind-btn');
   const historySection    = document.getElementById('invoice-history-section');
   const historyListEl     = document.getElementById('invoice-history-list');
 
@@ -1050,27 +1051,87 @@
     }
     rows.sort((a, b) => a.name.localeCompare(b.name));
 
-    if (rows.length === 0) {
+    // Show the section whenever an invoice anchor is set (so the user can
+    // always reach the Redo-last-fortnight button), or when any banked
+    // balance is non-zero.
+    if (rows.length === 0 && !invoiceAnchor) {
       bankedSection.hidden = true;
       return;
     }
 
     bankedListEl.innerHTML = '';
-    for (const r of rows) {
-      const row = document.createElement('div');
-      row.className = 'banked-row';
-      const name = document.createElement('span');
-      name.className = 'banked-name';
-      name.textContent = r.name;
-      const val = document.createElement('span');
-      val.className = 'banked-value ' + (r.sec > 0 ? 'positive' : r.sec < 0 ? 'negative' : 'zero');
-      const sign = r.sec > 0 ? '+' : r.sec < 0 ? '-' : '';
-      val.textContent = sign + formatHM(Math.abs(r.sec));
-      row.appendChild(name);
-      row.appendChild(val);
-      bankedListEl.appendChild(row);
+    if (rows.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'banked-hint';
+      empty.style.padding = '0.25rem 0';
+      empty.textContent = 'No banked hours — everything tracked has been invoiced.';
+      bankedListEl.appendChild(empty);
+    } else {
+      for (const r of rows) {
+        const row = document.createElement('div');
+        row.className = 'banked-row';
+        const name = document.createElement('span');
+        name.className = 'banked-name';
+        name.textContent = r.name;
+        const val = document.createElement('span');
+        val.className = 'banked-value ' + (r.sec > 0 ? 'positive' : r.sec < 0 ? 'negative' : 'zero');
+        const sign = r.sec > 0 ? '+' : r.sec < 0 ? '-' : '';
+        val.textContent = sign + formatHM(Math.abs(r.sec));
+        const edit = document.createElement('button');
+        edit.type = 'button';
+        edit.className = 'banked-edit';
+        edit.textContent = 'Edit';
+        edit.setAttribute('aria-label', 'Edit banked hours for ' + r.name);
+        edit.addEventListener('click', () => editBankedHours(r));
+        row.appendChild(name);
+        row.appendChild(val);
+        row.appendChild(edit);
+        bankedListEl.appendChild(row);
+      }
     }
     bankedSection.hidden = false;
+  }
+
+  async function editBankedHours(row) {
+    const currentHours = (row.sec / 3600).toFixed(2);
+    const input = prompt(
+      'Banked hours for "' + row.name + '" (negative = pre-billed):',
+      currentHours,
+    );
+    if (input === null) return;
+    const hrs = Number(input);
+    if (!Number.isFinite(hrs)) {
+      alert('Enter a number, e.g. 2.5 or -1.25');
+      return;
+    }
+    try {
+      await api('POST', '/api/invoice/banked', {
+        project_id: Number(row.id),
+        hours_banked_seconds: Math.round(hrs * 3600),
+      });
+      await loadInvoiceStatus();
+    } catch (err) {
+      alert('Could not update: ' + err.message);
+    }
+  }
+
+  async function rewindInvoice() {
+    const confirmed = confirm(
+      "Roll the invoice reminder back to the previous fortnight?\n\n" +
+      "If that invoice is in your history, it'll be removed and its banked-hours adjustments reversed. " +
+      "If it pre-dates the history (like your very first invoice), banking won't be touched — " +
+      "you can use the Edit buttons to fix up balances after re-marking.",
+    );
+    if (!confirmed) return;
+    invoiceRewindBtn.disabled = true;
+    try {
+      await api('POST', '/api/invoice/rewind', {});
+      await loadInvoiceStatus();
+    } catch (err) {
+      alert('Could not rewind: ' + err.message);
+    } finally {
+      invoiceRewindBtn.disabled = false;
+    }
   }
 
   function renderInvoiceHistory() {
@@ -1593,6 +1654,7 @@
   invoiceSettingsBtn.addEventListener('click', openInvoiceSettings);
   invoiceSetupForm.addEventListener('submit', submitInvoiceSetup);
   invoiceSetupDismiss.addEventListener('click', dismissInvoiceSetup);
+  invoiceRewindBtn.addEventListener('click', rewindInvoice);
 
   // ── Boot ─────────────────────────────────────────────────────────────────
 

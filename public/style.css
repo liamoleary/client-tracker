@@ -358,7 +358,7 @@ h1 {
   border-bottom: 1px solid var(--border);
 }
 .banked-row:last-child { border-bottom: none; }
-.banked-name { color: var(--text); font-weight: 600; }
+.banked-name { color: var(--text); font-weight: 600; flex: 1; min-width: 0; }
 .banked-value {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
@@ -367,6 +367,20 @@ h1 {
 .banked-value.positive { color: var(--success); }
 .banked-value.negative { color: #e06767; }
 .banked-value.zero     { color: var(--muted); }
+.banked-edit {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0 0.25rem;
+}
+.banked-edit:hover { color: var(--accent); }
+.banked-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 0.5rem;
+}
 
 /* ── Invoice history ─────────────────────────────────────────── */
 .invoice-history-section {

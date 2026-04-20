@@ -210,4 +210,69 @@ router.get('/history', (req, res) => {
   res.json({ invoices: out });
 });
 
+// POST /api/invoice/rewind
+// Roll the anchor back 14 days so the previous fortnight's invoice banner
+// reappears. If that fortnight is recorded in history, its line items are
+// reversed out of the banked-hours ledger and the record is deleted; the
+// client can then re-mark it with the right numbers. Projects that had a
+// pre-history mark-sent applied to them keep their current banked balance —
+// the caller is warned in the confirm dialog.
+router.post('/rewind', (req, res) => {
+  const anchor = readAnchor();
+  if (!anchor) return res.status(400).json({ error: 'no anchor set' });
+  const newAnchor = addDaysISO(anchor, -14);
+
+  const selInvoice = db.prepare(
+    'SELECT id FROM invoices WHERE period_end = ? ORDER BY id DESC LIMIT 1',
+  );
+  const selLines = db.prepare(
+    'SELECT project_id, tracked_seconds, invoiced_days FROM invoice_line_items WHERE invoice_id = ?',
+  );
+  const updateBanked = db.prepare(
+    'UPDATE projects SET hours_banked_seconds = hours_banked_seconds + ? WHERE id = ?',
+  );
+  const delLines = db.prepare('DELETE FROM invoice_line_items WHERE invoice_id = ?');
+  const delInvoice = db.prepare('DELETE FROM invoices WHERE id = ?');
+
+  const apply = db.transaction(() => {
+    const match = selInvoice.get(anchor);
+    let reversed = false;
+    if (match) {
+      const lines = selLines.all(match.id);
+      for (const l of lines) {
+        if (!l.project_id) continue;
+        const delta = -(l.tracked_seconds - l.invoiced_days * SECONDS_PER_BILLABLE_DAY);
+        updateBanked.run(delta, l.project_id);
+      }
+      delLines.run(match.id);
+      delInvoice.run(match.id);
+      reversed = true;
+    }
+    writeAnchor(newAnchor);
+    return reversed;
+  });
+  const reversed = apply();
+
+  res.json({ anchor: newAnchor, reversedHistory: reversed });
+});
+
+// POST /api/invoice/banked  { project_id, hours_banked_seconds }
+// Set a project's banked balance directly. Used to reconcile after a rewind
+// when the matching invoice was pre-history (no line items to reverse).
+router.post('/banked', (req, res) => {
+  const pid = Number(req.body?.project_id);
+  const value = Number(req.body?.hours_banked_seconds);
+  if (!Number.isFinite(pid) || pid <= 0) {
+    return res.status(400).json({ error: 'project_id required' });
+  }
+  if (!Number.isFinite(value)) {
+    return res.status(400).json({ error: 'hours_banked_seconds must be a number' });
+  }
+  const result = db
+    .prepare('UPDATE projects SET hours_banked_seconds = ? WHERE id = ?')
+    .run(Math.round(value), pid);
+  if (result.changes === 0) return res.status(404).json({ error: 'project not found' });
+  res.json({ project_id: pid, hours_banked_seconds: Math.round(value) });
+});
+
 module.exports = router;
