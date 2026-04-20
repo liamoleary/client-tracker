@@ -336,6 +336,108 @@ h1 {
   color-scheme: dark;
 }
 
+/* ── Banked-hours ledger ─────────────────────────────────────── */
+.banked-section {
+  margin-top: 1.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+.banked-section[hidden] { display: none; }
+.banked-section h2 { margin-bottom: 0.4rem; }
+.banked-hint {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin-bottom: 0.6rem;
+}
+.banked-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.banked-row:last-child { border-bottom: none; }
+.banked-name { color: var(--text); font-weight: 600; }
+.banked-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.banked-value.positive { color: var(--success); }
+.banked-value.negative { color: #e06767; }
+.banked-value.zero     { color: var(--muted); }
+
+/* ── Invoice history ─────────────────────────────────────────── */
+.invoice-history-section {
+  margin-top: 1.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+.invoice-history-section[hidden] { display: none; }
+.invoice-history-section h2 { margin-bottom: 0.6rem; }
+
+.invoice-history-row {
+  border-bottom: 1px solid var(--border);
+}
+.invoice-history-row:last-child { border-bottom: none; }
+
+.invoice-history-head {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.invoice-history-head-left {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+.invoice-history-period { color: var(--text); font-weight: 600; }
+.invoice-history-sent {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin-top: 0.15rem;
+}
+.invoice-history-total {
+  color: var(--success);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.invoice-history-body {
+  padding: 0.25rem 0 0.75rem 1.5rem;
+  font-size: 0.85rem;
+}
+.invoice-history-body[hidden] { display: none; }
+.invoice-history-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.2rem 0;
+}
+.invoice-history-line-name { color: var(--text); }
+.invoice-history-line-detail {
+  color: var(--muted);
+  font-size: 0.78rem;
+  padding: 0 0 0.25rem 0;
+  font-variant-numeric: tabular-nums;
+}
+.invoice-history-empty {
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding: 0.35rem 0;
+}
+
 /* ── Notification banner ────────────────────────────────────── */
 #notifications-banner {
   display: flex;

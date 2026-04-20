@@ -104,11 +104,34 @@ function initDB() {
       key TEXT PRIMARY KEY,
       value TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS invoices (
+      id INTEGER PRIMARY KEY,
+      period_start TEXT NOT NULL,
+      period_end TEXT NOT NULL,
+      sent_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      total_amount REAL NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS invoice_line_items (
+      id INTEGER PRIMARY KEY,
+      invoice_id INTEGER NOT NULL,
+      project_id INTEGER,
+      project_name TEXT NOT NULL,
+      daily_rate REAL NOT NULL,
+      tracked_seconds INTEGER NOT NULL DEFAULT 0,
+      banked_in_seconds INTEGER NOT NULL DEFAULT 0,
+      invoiced_days INTEGER NOT NULL DEFAULT 0,
+      banked_out_seconds INTEGER NOT NULL DEFAULT 0,
+      amount REAL NOT NULL DEFAULT 0,
+      FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
+    );
   `);
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_active ON sessions(end_time);
+    CREATE INDEX IF NOT EXISTS idx_line_items_invoice ON invoice_line_items(invoice_id);
   `);
 
   // Idempotent migrations — SQLite throws if a column already exists, which we swallow.

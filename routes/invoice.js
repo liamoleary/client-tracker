@@ -98,10 +98,13 @@ router.post('/settings', (req, res) => {
 //     through: "YYYY-MM-DD",
 //     invoiced: [{ project_id, tracked_seconds, invoiced_days }]
 //   }
-// Advance the anchor and update each project's banked-hours balance:
+// Advance the anchor, update each project's banked-hours balance, and record
+// the invoice + its line items for later display in the history section.
+//
 //   banked_new = banked_prev + tracked_seconds − invoiced_days × 8h
-// So if you round down, the leftover tracked time banks positive; if you
-// round up, the balance goes negative (you've pre-billed future work).
+//
+// Round down and the leftover tracked time banks positive; round up and the
+// balance goes negative (you've pre-billed future work).
 const SECONDS_PER_BILLABLE_DAY = 8 * 3600;
 
 router.post('/mark-sent', (req, res) => {
@@ -110,27 +113,101 @@ router.post('/mark-sent', (req, res) => {
     return res.status(400).json({ error: 'through must be YYYY-MM-DD' });
   }
   const invoiced = Array.isArray(req.body?.invoiced) ? req.body.invoiced : [];
+  const snapped = snapToSunday(through);
+  const prevAnchor = readAnchor();
+  const periodStart = prevAnchor
+    ? addDaysISO(prevAnchor, 1)   // Monday after prev anchor
+    : addDaysISO(snapped, -13);   // fall back to a Mon–Sun fortnight
 
+  const selProject = db.prepare('SELECT id, name, daily_rate, hours_banked_seconds FROM projects WHERE id = ?');
   const updateBanked = db.prepare(
     'UPDATE projects SET hours_banked_seconds = hours_banked_seconds + ? WHERE id = ?',
   );
-  const snapped = snapToSunday(through);
+  const insInvoice = db.prepare(
+    `INSERT INTO invoices (period_start, period_end, total_amount) VALUES (?, ?, ?)`,
+  );
+  const insLine = db.prepare(
+    `INSERT INTO invoice_line_items
+      (invoice_id, project_id, project_name, daily_rate,
+       tracked_seconds, banked_in_seconds, invoiced_days, banked_out_seconds, amount)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
 
   const apply = db.transaction(() => {
+    const lines = [];
+    let total = 0;
     for (const item of invoiced) {
       const pid = Number(item?.project_id);
-      const tracked = Number(item?.tracked_seconds);
-      const days = Number(item?.invoiced_days);
+      const tracked = Math.max(0, Math.round(Number(item?.tracked_seconds)) || 0);
+      const days = Math.max(0, Math.round(Number(item?.invoiced_days)) || 0);
       if (!Number.isFinite(pid) || pid <= 0) continue;
-      if (!Number.isFinite(tracked) || !Number.isFinite(days)) continue;
-      const delta = Math.round(tracked - days * SECONDS_PER_BILLABLE_DAY);
+      const proj = selProject.get(pid);
+      if (!proj) continue;
+      const bankedIn = proj.hours_banked_seconds;
+      const delta = tracked - days * SECONDS_PER_BILLABLE_DAY;
+      const bankedOut = bankedIn + delta;
+      const amount = days * proj.daily_rate;
       updateBanked.run(delta, pid);
+      lines.push({
+        project_id: pid,
+        project_name: proj.name,
+        daily_rate: proj.daily_rate,
+        tracked_seconds: tracked,
+        banked_in_seconds: bankedIn,
+        invoiced_days: days,
+        banked_out_seconds: bankedOut,
+        amount,
+      });
+      total += amount;
     }
+
+    // Record the invoice even if it has no line items — the user may mark an
+    // empty fortnight as invoiced to advance the anchor.
+    const invoiceId = insInvoice.run(periodStart, snapped, total).lastInsertRowid;
+    for (const l of lines) {
+      insLine.run(
+        invoiceId,
+        l.project_id,
+        l.project_name,
+        l.daily_rate,
+        l.tracked_seconds,
+        l.banked_in_seconds,
+        l.invoiced_days,
+        l.banked_out_seconds,
+        l.amount,
+      );
+    }
+
     writeAnchor(snapped);
   });
   apply();
 
   res.json({ anchor: snapped });
+});
+
+function addDaysISO(iso, n) {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+// GET /api/invoice/history
+// Returns past invoices newest-first, each with its line items.
+router.get('/history', (req, res) => {
+  const invoices = db
+    .prepare(
+      `SELECT id, period_start, period_end, sent_at, total_amount
+       FROM invoices ORDER BY period_end DESC, id DESC`,
+    )
+    .all();
+  const lineStmt = db.prepare(
+    `SELECT project_id, project_name, daily_rate,
+            tracked_seconds, banked_in_seconds, invoiced_days,
+            banked_out_seconds, amount
+     FROM invoice_line_items WHERE invoice_id = ? ORDER BY project_name`,
+  );
+  const out = invoices.map((inv) => ({ ...inv, line_items: lineStmt.all(inv.id) }));
+  res.json({ invoices: out });
 });
 
 module.exports = router;

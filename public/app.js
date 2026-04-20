@@ -148,6 +148,8 @@
   let invoiceSessions = [];         // raw sessions since the anchor (for fortnight rollup).
   let invoiceProjectsMeta = {};     // { [projectId]: { hours_banked_seconds } } from the server.
   let invoiceDaysOverride = {};     // { [projectId]: invoicedDays } — user-adjusted day counts.
+  let invoiceHistory = [];          // [{ id, period_start, period_end, sent_at, total_amount, line_items[] }]
+  let expandedInvoices = new Set(); // invoice ids currently showing line items
 
   // ── DOM refs ─────────────────────────────────────────────────────────────
 
@@ -172,6 +174,11 @@
   const invoiceSetupForm  = document.getElementById('invoice-setup-form');
   const invoiceSetupDate  = document.getElementById('invoice-setup-date');
   const invoiceSetupDismiss = document.getElementById('invoice-setup-dismiss');
+
+  const bankedSection     = document.getElementById('banked-section');
+  const bankedListEl      = document.getElementById('banked-list');
+  const historySection    = document.getElementById('invoice-history-section');
+  const historyListEl     = document.getElementById('invoice-history-list');
 
   const newProjectInput = document.getElementById('new-project-input');
   const addProjectBtn   = document.getElementById('add-project-btn');
@@ -1007,6 +1014,7 @@
       for (const p of (s.projects || [])) {
         invoiceProjectsMeta[p.id] = {
           hours_banked_seconds: Number(p.hours_banked_seconds) || 0,
+          name: p.name,
         };
       }
     } catch (err) {
@@ -1016,6 +1024,164 @@
       invoiceProjectsMeta = {};
     }
     renderInvoice();
+    renderBanked();
+    loadInvoiceHistory().catch(console.error);
+  }
+
+  async function loadInvoiceHistory() {
+    try {
+      const s = await api('GET', '/api/invoice/history');
+      invoiceHistory = s.invoices || [];
+    } catch (err) {
+      console.warn('[invoice] failed to load history:', err);
+      invoiceHistory = [];
+    }
+    renderInvoiceHistory();
+  }
+
+  function renderBanked() {
+    const rows = [];
+    for (const id of Object.keys(invoiceProjectsMeta)) {
+      const meta = invoiceProjectsMeta[id];
+      const sec = Number(meta.hours_banked_seconds) || 0;
+      if (sec === 0) continue;
+      const proj = projects.find((p) => String(p.id) === String(id));
+      rows.push({ id, name: meta.name || proj?.name || ('Project ' + id), sec });
+    }
+    rows.sort((a, b) => a.name.localeCompare(b.name));
+
+    if (rows.length === 0) {
+      bankedSection.hidden = true;
+      return;
+    }
+
+    bankedListEl.innerHTML = '';
+    for (const r of rows) {
+      const row = document.createElement('div');
+      row.className = 'banked-row';
+      const name = document.createElement('span');
+      name.className = 'banked-name';
+      name.textContent = r.name;
+      const val = document.createElement('span');
+      val.className = 'banked-value ' + (r.sec > 0 ? 'positive' : r.sec < 0 ? 'negative' : 'zero');
+      const sign = r.sec > 0 ? '+' : r.sec < 0 ? '-' : '';
+      val.textContent = sign + formatHM(Math.abs(r.sec));
+      row.appendChild(name);
+      row.appendChild(val);
+      bankedListEl.appendChild(row);
+    }
+    bankedSection.hidden = false;
+  }
+
+  function renderInvoiceHistory() {
+    if (invoiceHistory.length === 0) {
+      historySection.hidden = true;
+      return;
+    }
+    historyListEl.innerHTML = '';
+    for (const inv of invoiceHistory) {
+      historyListEl.appendChild(buildInvoiceHistoryRow(inv));
+    }
+    historySection.hidden = false;
+  }
+
+  function buildInvoiceHistoryRow(inv) {
+    const row = document.createElement('div');
+    row.className = 'invoice-history-row';
+
+    const head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'invoice-history-head';
+    head.setAttribute('aria-expanded', 'false');
+
+    const left = document.createElement('div');
+    left.className = 'invoice-history-head-left';
+
+    const caret = document.createElement('span');
+    caret.className = 'invoice-caret';
+    caret.textContent = '▸';
+    caret.setAttribute('aria-hidden', 'true');
+
+    const label = document.createElement('div');
+    const periodStart = new Date(inv.period_start + 'T00:00:00');
+    const periodEnd   = new Date(inv.period_end   + 'T00:00:00');
+    const period = document.createElement('div');
+    period.className = 'invoice-history-period';
+    period.textContent = formatInvoicePeriod(periodStart, periodEnd);
+    const sent = document.createElement('div');
+    sent.className = 'invoice-history-sent';
+    sent.textContent = 'Marked invoiced ' + formatSentAt(inv.sent_at);
+    label.appendChild(period);
+    label.appendChild(sent);
+
+    left.appendChild(caret);
+    left.appendChild(label);
+
+    const total = document.createElement('div');
+    total.className = 'invoice-history-total';
+    total.textContent = fmtMoney(inv.total_amount);
+
+    head.appendChild(left);
+    head.appendChild(total);
+
+    const body = document.createElement('div');
+    body.className = 'invoice-history-body';
+    body.hidden = !expandedInvoices.has(inv.id);
+
+    if (inv.line_items.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'invoice-history-empty';
+      empty.textContent = 'No line items (empty fortnight).';
+      body.appendChild(empty);
+    } else {
+      for (const l of inv.line_items) {
+        const lineRow = document.createElement('div');
+        lineRow.className = 'invoice-history-line';
+        const nm = document.createElement('span');
+        nm.className = 'invoice-history-line-name';
+        nm.textContent = l.project_name +
+          ' — ' + l.invoiced_days + (l.invoiced_days === 1 ? ' day' : ' days');
+        const amt = document.createElement('span');
+        amt.className = 'invoice-history-total';
+        amt.textContent = fmtMoney(l.amount);
+        lineRow.appendChild(nm);
+        lineRow.appendChild(amt);
+        body.appendChild(lineRow);
+
+        const detail = document.createElement('div');
+        detail.className = 'invoice-history-line-detail';
+        const inPart  = l.banked_in_seconds  === 0 ? '' : ' + banked ' + formatSignedHM(l.banked_in_seconds);
+        const outPart = ' · carried forward ' + formatSignedHM(l.banked_out_seconds);
+        detail.textContent = formatHM(l.tracked_seconds) + ' tracked' + inPart + outPart;
+        body.appendChild(detail);
+      }
+    }
+
+    if (expandedInvoices.has(inv.id)) {
+      row.classList.add('expanded');
+      caret.textContent = '▾';
+      head.setAttribute('aria-expanded', 'true');
+    }
+
+    head.addEventListener('click', () => {
+      if (expandedInvoices.has(inv.id)) {
+        expandedInvoices.delete(inv.id);
+      } else {
+        expandedInvoices.add(inv.id);
+      }
+      renderInvoiceHistory();
+    });
+
+    row.appendChild(head);
+    row.appendChild(body);
+    return row;
+  }
+
+  function formatSentAt(iso) {
+    if (!iso) return '';
+    const d = new Date(iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z');
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
   }
 
   function renderInvoice() {

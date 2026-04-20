@@ -105,6 +105,23 @@
         <p id="empty-state" hidden>No projects yet. Add one above.</p>
       </section>
 
+      <!-- Banked hours: running per-project ledger of tracked-vs-invoiced time. -->
+      <section id="banked-section" class="banked-section" hidden aria-label="Banked hours">
+        <h2>Banked hours</h2>
+        <p class="banked-hint">
+          Hours tracked but not yet invoiced carry forward here. Positive =
+          credit to draw down next invoice; negative = already pre-billed.
+        </p>
+        <div id="banked-list"></div>
+      </section>
+
+      <!-- Invoice history: past marked-as-sent invoices, expandable per row. -->
+      <section id="invoice-history-section" class="invoice-history-section" hidden
+               aria-label="Invoice history">
+        <h2>Invoice history</h2>
+        <div id="invoice-history-list"></div>
+      </section>
+
       <footer id="footer" class="app-footer">
         <a href="/api/backup" download>Download backup (.json)</a>
         <span id="storage-footer"></span>
