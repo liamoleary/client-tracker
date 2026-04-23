@@ -338,38 +338,6 @@
 
     const weekGroups = groupByWeek(allSessions);
 
-    // ── Invoice summary (last completed fortnight) ──
-    // Aligns to the anchored fortnight when set, otherwise the last completed
-    // Mon–Sun fortnight before today. Billed as days × daily rate to match
-    // the actual invoice line items (not fractional hours × hourly rate).
-    const fortnight = getSummaryFortnight();
-    const fortStartKey = localDateKey(fortnight.start);
-    const fortEndKey   = localDateKey(fortnight.end);
-
-    const workDateKeys = new Set();
-    let fortnightSec = 0;
-    for (const s of completed) {
-      if (!s.duration_seconds || s.duration_seconds <= 0) continue;
-      const key = localDateKey(new Date(s.start_time));
-      if (key < fortStartKey || key > fortEndKey) continue;
-      workDateKeys.add(key);
-      fortnightSec += s.duration_seconds;
-    }
-    const fortDays = workDateKeys.size;
-    const fortAmount = fortDays * Number(project.daily_rate);
-
-    if (fortDays > 0 || weekGroups.length > 0) {
-      const fmtShort = (d) => d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-      const fmtLong  = (d) => d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-      const inv = document.createElement('div');
-      inv.className = 'fortnight-block';
-      inv.innerHTML =
-        `<div class="fortnight-label">Invoice — last fortnight</div>` +
-        `<div class="fortnight-period">${fmtShort(fortnight.start)} – ${fmtLong(fortnight.end)}</div>` +
-        `<div class="fortnight-amount">${fortDays} day${fortDays === 1 ? '' : 's'} &middot; ${formatHM(fortnightSec)} &middot; <strong>${fmtMoney(fortAmount)}</strong></div>`;
-      details.appendChild(inv);
-    }
-
     // ── Rate row ──
     const rateRow = document.createElement('div');
     rateRow.className = 'rate-row';
@@ -909,26 +877,6 @@
     const todayKey = localDateKey(new Date());
     const endKey   = localDateKey(end);
     return { start, end, due: todayKey > endKey };
-  }
-
-  // The fortnight the per-project summary block should display. Aligned to
-  // the anchored invoice cycle when set; otherwise the last completed Mon–Sun
-  // fortnight strictly before today (never the in-progress current week).
-  function getSummaryFortnight() {
-    if (invoiceAnchor) {
-      const anchor = new Date(invoiceAnchor + 'T00:00:00');
-      if (!isNaN(anchor.getTime())) {
-        return { start: addDays(anchor, 1), end: addDays(anchor, 14) };
-      }
-    }
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const day = today.getDay(); // 0 = Sunday
-    const daysToThisMonday = day === 0 ? -6 : 1 - day;
-    const thisMonday = addDays(today, daysToThisMonday);
-    const end = addDays(thisMonday, -1);   // last Sunday
-    const start = addDays(end, -13);       // Monday two weeks earlier
-    return { start, end };
   }
 
   // Fortnight rollup with banking:

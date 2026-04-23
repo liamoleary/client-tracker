@@ -726,38 +726,6 @@ button:disabled { opacity: 0.4; cursor: default; }
   gap: 0.75rem;
 }
 
-/* ── Fortnight / invoice block ─────────────────────────────── */
-.fortnight-block {
-  background: #16261a;
-  border: 1px solid #2a4a30;
-  border-radius: calc(var(--radius) - 2px);
-  padding: 0.75rem 1rem;
-}
-
-.fortnight-label {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: #6aaa7a;
-  margin-bottom: 0.2rem;
-}
-
-.fortnight-period {
-  font-size: 0.8rem;
-  color: var(--muted);
-  margin-bottom: 0.25rem;
-}
-
-.fortnight-amount {
-  font-size: 1rem;
-  color: var(--text);
-}
-
-.fortnight-amount strong {
-  color: var(--success);
-  font-size: 1.1rem;
-}
-
 /* ── Rate row ──────────────────────────────────────────────── */
 .rate-row {
   display: flex;
