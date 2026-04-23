@@ -958,40 +958,23 @@
     return { entries, total };
   }
 
-  // Running total for the in-progress fortnight: per-project unique calendar
-  // days worked × daily rate, summed across all projects. Mirrors the simple
-  // "days worked × rate" math used in the per-project Invoice block, so the
-  // number the user sees here lines up with what they'd actually bill.
+  // Running total for the in-progress fortnight: tracked time × hourly-rate
+  // equivalent (daily_rate / 8), summed across projects. Uses the same math
+  // as the per-week earnings line so the headline figure matches what the
+  // user already sees elsewhere — no whole-day rounding, no projection.
   function computeInvoiceRunningTotal(sessions, period) {
     const startKey = localDateKey(period.start);
     const endKey   = localDateKey(period.end);
-    const byProject = new Map();
+    let totalAmount = 0;
+    let totalSeconds = 0;
     for (const s of sessions) {
       if (!s.duration_seconds || s.duration_seconds <= 0) continue;
       const key = localDateKey(new Date(s.start_time));
       if (key < startKey || key > endKey) continue;
-      let entry = byProject.get(s.project_id);
-      if (!entry) {
-        entry = {
-          daily_rate: Number(s.daily_rate) || 0,
-          dayKeys: new Set(),
-          seconds: 0,
-        };
-        byProject.set(s.project_id, entry);
-      }
-      entry.dayKeys.add(key);
-      entry.seconds += s.duration_seconds;
+      totalAmount  += calcEarnings(s.duration_seconds, Number(s.daily_rate) || 0);
+      totalSeconds += s.duration_seconds;
     }
-    let totalDays = 0;
-    let totalAmount = 0;
-    let totalSeconds = 0;
-    for (const e of byProject.values()) {
-      const days = e.dayKeys.size;
-      totalDays   += days;
-      totalAmount += days * e.daily_rate;
-      totalSeconds += e.seconds;
-    }
-    return { totalDays, totalAmount, totalSeconds };
+    return { totalAmount, totalSeconds };
   }
 
   async function loadInvoiceStatus() {
@@ -1258,8 +1241,7 @@
       invoiceRunningPeriodEl.textContent = 'For ' + formatInvoicePeriod(period.start, period.end);
       invoiceRunningTotalEl.textContent  = fmtMoney(running.totalAmount);
       invoiceRunningMetaEl.textContent =
-        running.totalDays + ' day' + (running.totalDays === 1 ? '' : 's') + ' worked so far · ' +
-        formatHM(running.totalSeconds);
+        formatHM(running.totalSeconds) + ' worked so far · ' + formatDays(running.totalSeconds);
       invoiceRunningBanner.hidden = false;
       return;
     }

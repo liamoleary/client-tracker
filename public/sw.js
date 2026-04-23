@@ -5,7 +5,7 @@
 //  2. Handle push notifications (hourly check-ins).
 //  3. Respond to notification action clicks.
 
-const CACHE_VERSION = 'tt-shell-v16';
+const CACHE_VERSION = 'tt-shell-v17';
 const SHELL_ASSETS = [
   '/',
   '/index.html',
