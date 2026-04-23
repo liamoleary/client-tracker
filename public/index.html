@@ -37,6 +37,18 @@
     <div class="container">
       <h1>Time Tracker</h1>
 
+      <!-- Running total for the in-progress fortnight (shown until the cycle closes) -->
+      <section id="invoice-running-banner" class="invoice-running-banner" hidden aria-label="Next invoice running total">
+        <div class="invoice-running-head">
+          <div>
+            <div class="invoice-running-title">Next invoice — running total</div>
+            <div class="invoice-running-period" id="invoice-running-period"></div>
+          </div>
+          <div class="invoice-running-total" id="invoice-running-total"></div>
+        </div>
+        <div class="invoice-running-meta" id="invoice-running-meta"></div>
+      </section>
+
       <!-- Invoice-due banner (shown when the current fortnight is ready to bill) -->
       <section id="invoice-banner" class="invoice-banner" hidden aria-label="Invoice due">
         <div class="invoice-banner-head">

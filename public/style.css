@@ -127,6 +127,51 @@ h1 {
 }
 .app-footer a:hover { color: var(--accent-h); text-decoration: underline; }
 
+/* ── Next-invoice running total ─────────────────────────────── */
+.invoice-running-banner {
+  background: #14202b;
+  border: 1px solid #2c4d72;
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 0.85rem 1.1rem;
+  margin-bottom: 1rem;
+}
+
+.invoice-running-banner[hidden] { display: none; }
+
+.invoice-running-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.invoice-running-title {
+  font-weight: 600;
+  color: var(--accent);
+  font-size: 1rem;
+}
+
+.invoice-running-period {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-top: 0.1rem;
+}
+
+.invoice-running-total {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.invoice-running-meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-top: 0.4rem;
+}
+
 /* ── Invoice-due banner ─────────────────────────────────────── */
 .invoice-banner {
   background: #14231a;

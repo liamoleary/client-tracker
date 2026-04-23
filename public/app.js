@@ -166,6 +166,10 @@
   const invoiceBanner     = document.getElementById('invoice-banner');
   const invoicePeriodEl   = document.getElementById('invoice-period');
   const invoiceTotalEl    = document.getElementById('invoice-total');
+  const invoiceRunningBanner   = document.getElementById('invoice-running-banner');
+  const invoiceRunningPeriodEl = document.getElementById('invoice-running-period');
+  const invoiceRunningTotalEl  = document.getElementById('invoice-running-total');
+  const invoiceRunningMetaEl   = document.getElementById('invoice-running-meta');
   const invoiceBreakdownEl= document.getElementById('invoice-breakdown');
   const invoiceCopyBtn    = document.getElementById('invoice-copy-btn');
   const invoiceMarkBtn    = document.getElementById('invoice-mark-sent-btn');
@@ -1006,6 +1010,42 @@
     return { entries, total };
   }
 
+  // Running total for the in-progress fortnight: per-project unique calendar
+  // days worked × daily rate, summed across all projects. Mirrors the simple
+  // "days worked × rate" math used in the per-project Invoice block, so the
+  // number the user sees here lines up with what they'd actually bill.
+  function computeInvoiceRunningTotal(sessions, period) {
+    const startKey = localDateKey(period.start);
+    const endKey   = localDateKey(period.end);
+    const byProject = new Map();
+    for (const s of sessions) {
+      if (!s.duration_seconds || s.duration_seconds <= 0) continue;
+      const key = localDateKey(new Date(s.start_time));
+      if (key < startKey || key > endKey) continue;
+      let entry = byProject.get(s.project_id);
+      if (!entry) {
+        entry = {
+          daily_rate: Number(s.daily_rate) || 0,
+          dayKeys: new Set(),
+          seconds: 0,
+        };
+        byProject.set(s.project_id, entry);
+      }
+      entry.dayKeys.add(key);
+      entry.seconds += s.duration_seconds;
+    }
+    let totalDays = 0;
+    let totalAmount = 0;
+    let totalSeconds = 0;
+    for (const e of byProject.values()) {
+      const days = e.dayKeys.size;
+      totalDays   += days;
+      totalAmount += days * e.daily_rate;
+      totalSeconds += e.seconds;
+    }
+    return { totalDays, totalAmount, totalSeconds };
+  }
+
   async function loadInvoiceStatus() {
     try {
       const s = await api('GET', '/api/invoice/status');
@@ -1249,6 +1289,7 @@
     // No anchor → show the one-time setup prompt so the user can opt in.
     if (!invoiceAnchor) {
       invoiceBanner.hidden = true;
+      invoiceRunningBanner.hidden = true;
       invoiceSetup.hidden = false;
       return;
     }
@@ -1256,10 +1297,27 @@
     const period = computeInvoicePeriod(invoiceAnchor);
     invoiceSetup.hidden = true;
 
-    if (!period || !period.due) {
+    if (!period) {
       invoiceBanner.hidden = true;
+      invoiceRunningBanner.hidden = true;
       return;
     }
+
+    if (!period.due) {
+      // In-progress fortnight: show the running total instead of the due banner.
+      invoiceBanner.hidden = true;
+      const running = computeInvoiceRunningTotal(invoiceSessions, period);
+      invoiceRunningPeriodEl.textContent = 'For ' + formatInvoicePeriod(period.start, period.end);
+      invoiceRunningTotalEl.textContent  = fmtMoney(running.totalAmount);
+      invoiceRunningMetaEl.textContent =
+        running.totalDays + ' day' + (running.totalDays === 1 ? '' : 's') + ' worked so far · ' +
+        formatHM(running.totalSeconds);
+      invoiceRunningBanner.hidden = false;
+      return;
+    }
+
+    // Fortnight has closed → invoice is due, hide the running preview.
+    invoiceRunningBanner.hidden = true;
 
     const breakdown = computeInvoiceBreakdown(invoiceSessions, period);
 
