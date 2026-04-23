@@ -172,6 +172,17 @@ h1 {
   margin-top: 0.4rem;
 }
 
+.invoice-running-banked {
+  color: var(--text);
+  font-size: 0.9rem;
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px dashed var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+.invoice-running-banked[hidden] { display: none; }
+
 /* ── Invoice-due banner ─────────────────────────────────────── */
 .invoice-banner {
   background: #14231a;

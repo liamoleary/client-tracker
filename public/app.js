@@ -170,6 +170,7 @@
   const invoiceRunningPeriodEl = document.getElementById('invoice-running-period');
   const invoiceRunningTotalEl  = document.getElementById('invoice-running-total');
   const invoiceRunningMetaEl   = document.getElementById('invoice-running-meta');
+  const invoiceRunningBankedEl = document.getElementById('invoice-running-banked');
   const invoiceBreakdownEl= document.getElementById('invoice-breakdown');
   const invoiceCopyBtn    = document.getElementById('invoice-copy-btn');
   const invoiceMarkBtn    = document.getElementById('invoice-mark-sent-btn');
@@ -974,7 +975,27 @@
       totalAmount  += calcEarnings(s.duration_seconds, Number(s.daily_rate) || 0);
       totalSeconds += s.duration_seconds;
     }
-    return { totalAmount, totalSeconds };
+
+    // Banked carry-in across all projects, valued at each project's hourly
+    // rate. Positive = credit that would push the next bill up; negative =
+    // pre-billed time that would pull it down.
+    let bankedSeconds = 0;
+    let bankedAmount = 0;
+    for (const p of (projects || [])) {
+      const meta = invoiceProjectsMeta[p.id];
+      const sec = Number(meta?.hours_banked_seconds) || 0;
+      if (sec === 0) continue;
+      bankedSeconds += sec;
+      bankedAmount  += calcEarnings(sec, Number(p.daily_rate) || 0);
+    }
+
+    return {
+      totalAmount,
+      totalSeconds,
+      bankedSeconds,
+      bankedAmount,
+      combinedAmount: totalAmount + bankedAmount,
+    };
   }
 
   async function loadInvoiceStatus() {
@@ -1242,6 +1263,15 @@
       invoiceRunningTotalEl.textContent  = fmtMoney(running.totalAmount);
       invoiceRunningMetaEl.textContent =
         formatHM(running.totalSeconds) + ' worked so far · ' + formatDays(running.totalSeconds);
+      if (running.bankedSeconds !== 0) {
+        const sign = running.bankedSeconds > 0 ? '+' : '−';
+        const absHM = formatHM(Math.abs(running.bankedSeconds));
+        invoiceRunningBankedEl.textContent =
+          'With ' + sign + absHM + ' banked: ' + fmtMoney(running.combinedAmount);
+        invoiceRunningBankedEl.hidden = false;
+      } else {
+        invoiceRunningBankedEl.hidden = true;
+      }
       invoiceRunningBanner.hidden = false;
       return;
     }
