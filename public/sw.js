@@ -5,7 +5,7 @@
 //  2. Handle push notifications (hourly check-ins).
 //  3. Respond to notification action clicks.
 
-const CACHE_VERSION = 'tt-shell-v14';
+const CACHE_VERSION = 'tt-shell-v15';
 const SHELL_ASSETS = [
   '/',
   '/index.html',
@@ -134,6 +134,20 @@ self.addEventListener('push', (event) => {
   );
 });
 
+// Ping open app windows so their banner/state resyncs after we've touched
+// the timer on the server. Without this, tapping "Yes, still working" or
+// "No, stop timer" on the notification leaves any open tab ticking against
+// stale state — which is how a later UI Stop can end up losing time.
+async function broadcastTimerChange(reason) {
+  const clientsArr = await self.clients.matchAll({
+    type: 'window',
+    includeUncontrolled: true,
+  });
+  for (const client of clientsArr) {
+    client.postMessage({ type: 'timer:resync', reason });
+  }
+}
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
@@ -150,6 +164,7 @@ self.addEventListener('notificationclick', (event) => {
         } catch (err) {
           // Swallow — the notification is already dismissed.
         }
+        await broadcastTimerChange('notification-confirm');
         return;
       }
 
@@ -162,6 +177,7 @@ self.addEventListener('notificationclick', (event) => {
         } catch (err) {
           // Swallow.
         }
+        await broadcastTimerChange('notification-stop');
         return;
       }
 

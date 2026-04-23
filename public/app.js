@@ -1532,6 +1532,17 @@
         console.error('[sw] registration failed:', err);
       });
     });
+
+    // The service worker posts a 'timer:resync' message after it handles a
+    // notification action (Yes, still working / No, stop timer). Re-pull
+    // active-session state so the banner doesn't keep ticking against a
+    // session the server has already closed — which was the path to the
+    // "your time didn't get logged" bug.
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      if (event.data && event.data.type === 'timer:resync') {
+        loadAll().catch(console.error);
+      }
+    });
   }
 
   // ── Push notifications ────────────────────────────────────────────────────

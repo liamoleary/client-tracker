@@ -78,14 +78,16 @@ router.post('/start', (req, res) => {
   res.status(201).json(session);
 });
 
-// Window during which a stop request can still amend a recently auto-stopped
+// Window during which a stop request can still amend a recently server-closed
 // session. Longer than the 2h auto-stop grace so a user who left the app open
 // overnight still gets their time applied.
 const AUTO_STOP_AMEND_WINDOW_MS = 12 * 60 * 60 * 1000;
 
-// Most recent session auto-stopped by the monitor, if its end_time is within
-// the amend window. Used so a stop click whose banner was still ticking can
-// overwrite the monitor's conservative duration.
+// Most recent session closed by the server (auto_stopped=1) — either by the
+// monitor's 2h idle auto-stop, or by a "No, stop timer" tap on the check-in
+// notification. Used so a later UI stop whose banner was still ticking can
+// overwrite the server's conservative duration rather than silently losing
+// the work.
 function getAmendableAutoStopped() {
   return db
     .prepare(
@@ -143,9 +145,10 @@ router.post('/stop', (req, res) => {
 
   const active = getActiveSession();
   if (!active) {
-    // No live timer — but if the monitor auto-stopped a session recently and
-    // the client was still ticking against it, let this stop amend that
-    // session's duration rather than reject the user's intent.
+    // No live timer — but if the server closed a session recently (monitor
+    // auto-stop, or "No, stop timer" tap on a notification) and the client
+    // was still ticking against it, let this stop amend that session's
+    // duration rather than reject the user's intent and silently lose time.
     if (hasDuration) {
       const recent = getAmendableAutoStopped();
       if (recent) {
@@ -175,9 +178,15 @@ router.post('/stop', (req, res) => {
     );
   }
 
+  // A stop request without a duration can only come from the service worker's
+  // "No, stop timer" notification action — the UI always sends duration_seconds.
+  // Flag it as auto_stopped so that if the user was actually still working (and
+  // a later UI stop arrives with the real duration), the amend path can recover
+  // the missing time instead of returning "No timer is running".
+  const autoStopped = hasDuration ? 0 : 1;
   db.prepare(
-    'UPDATE sessions SET end_time = ?, duration_seconds = ? WHERE id = ?',
-  ).run(endTime.toISOString(), duration, active.id);
+    'UPDATE sessions SET end_time = ?, duration_seconds = ?, auto_stopped = ? WHERE id = ?',
+  ).run(endTime.toISOString(), duration, autoStopped, active.id);
 
   res.json(sessionById(active.id));
 });
