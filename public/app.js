@@ -977,8 +977,8 @@
     }
 
     // Banked carry-in across all projects, valued at each project's hourly
-    // rate. Positive = credit that would push the next bill up; negative =
-    // pre-billed time that would pull it down.
+    // rate. Positive = unbilled hours rolling into the next fortnight;
+    // negative = hours already pre-billed in a prior invoice.
     let bankedSeconds = 0;
     let bankedAmount = 0;
     for (const p of (projects || [])) {
@@ -994,7 +994,6 @@
       totalSeconds,
       bankedSeconds,
       bankedAmount,
-      combinedAmount: totalAmount + bankedAmount,
     };
   }
 
@@ -1263,11 +1262,15 @@
       invoiceRunningTotalEl.textContent  = fmtMoney(running.totalAmount);
       invoiceRunningMetaEl.textContent =
         formatHM(running.totalSeconds) + ' worked so far · ' + formatDays(running.totalSeconds);
-      if (running.bankedSeconds !== 0) {
-        const sign = running.bankedSeconds > 0 ? '+' : '−';
-        const absHM = formatHM(Math.abs(running.bankedSeconds));
+      if (running.bankedSeconds > 0) {
         invoiceRunningBankedEl.textContent =
-          'With ' + sign + absHM + ' banked: ' + fmtMoney(running.combinedAmount);
+          'Plus ' + formatHM(running.bankedSeconds) +
+          ' banked for next fortnight: ' + fmtMoney(running.bankedAmount);
+        invoiceRunningBankedEl.hidden = false;
+      } else if (running.bankedSeconds < 0) {
+        invoiceRunningBankedEl.textContent =
+          'Less ' + formatHM(Math.abs(running.bankedSeconds)) +
+          ' pre-billed in prior invoices: −' + fmtMoney(Math.abs(running.bankedAmount));
         invoiceRunningBankedEl.hidden = false;
       } else {
         invoiceRunningBankedEl.hidden = true;
