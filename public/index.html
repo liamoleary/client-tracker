@@ -37,32 +37,23 @@
     <div class="container">
       <h1>Time Tracker</h1>
 
-      <!-- Running total for the in-progress fortnight (shown until the cycle closes) -->
-      <section id="invoice-running-banner" class="invoice-running-banner" hidden aria-label="Next invoice running total">
-        <div class="invoice-running-head">
+      <!-- Compact invoice card: summary + Plan & process button. Always shown
+           when an anchor is set; the full planner lives on its own page. -->
+      <section id="invoice-card" class="invoice-card" hidden aria-label="Invoice">
+        <div class="invoice-card-head">
           <div>
-            <div class="invoice-running-title">Next invoice — running total</div>
-            <div class="invoice-running-period" id="invoice-running-period"></div>
+            <div class="invoice-card-title">
+              Invoice for <span id="invoice-card-period"></span>
+            </div>
+            <div class="invoice-card-status" id="invoice-card-status"></div>
           </div>
-          <div class="invoice-running-total" id="invoice-running-total"></div>
+          <div class="invoice-card-total" id="invoice-card-total"></div>
         </div>
-        <div class="invoice-running-meta" id="invoice-running-meta"></div>
-        <div class="invoice-running-banked" id="invoice-running-banked" hidden></div>
-      </section>
-
-      <!-- Invoice-due banner (shown when the current fortnight is ready to bill) -->
-      <section id="invoice-banner" class="invoice-banner" hidden aria-label="Invoice due">
-        <div class="invoice-banner-head">
-          <div>
-            <div class="invoice-title" id="invoice-title">Invoice due</div>
-            <div class="invoice-period" id="invoice-period"></div>
-          </div>
-          <div class="invoice-total" id="invoice-total"></div>
-        </div>
-        <div class="invoice-breakdown" id="invoice-breakdown"></div>
-        <div class="invoice-actions">
-          <button class="btn-secondary" id="invoice-copy-btn" type="button">Copy line items</button>
-          <button class="btn-primary" id="invoice-mark-sent-btn" type="button">Mark as invoiced</button>
+        <div class="invoice-card-meta" id="invoice-card-meta"></div>
+        <div class="invoice-card-actions">
+          <button class="btn-primary" id="invoice-plan-btn" type="button">
+            Plan &amp; process invoice
+          </button>
           <button class="btn-link" id="invoice-settings-btn" type="button">Settings</button>
         </div>
       </section>
@@ -144,6 +135,26 @@
       <footer id="footer" class="app-footer">
         <a href="/api/backup" download>Download backup (.json)</a>
         <span id="storage-footer"></span>
+      </footer>
+    </div>
+
+    <!-- Full-screen invoice planner page. Opens when the user taps
+         "Plan & process invoice" on the home card. -->
+    <div id="invoice-planner-page" class="invoice-planner-page" hidden role="dialog" aria-modal="true" aria-label="Plan invoice">
+      <header class="invoice-planner-header">
+        <button class="btn-link invoice-planner-back" id="invoice-planner-back" type="button" aria-label="Back to home">
+          ← Back
+        </button>
+        <div class="invoice-planner-title-block">
+          <div class="invoice-planner-title">Plan invoice</div>
+          <div class="invoice-planner-period" id="invoice-planner-period"></div>
+        </div>
+        <div class="invoice-planner-grand-total" id="invoice-planner-grand-total"></div>
+      </header>
+      <div class="invoice-planner-body" id="invoice-planner-body"></div>
+      <footer class="invoice-planner-footer">
+        <button class="btn-secondary" id="invoice-planner-copy" type="button">Copy line items</button>
+        <button class="btn-primary"   id="invoice-planner-save" type="button">Save &amp; process invoice</button>
       </footer>
     </div>
 

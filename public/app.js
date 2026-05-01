@@ -178,21 +178,27 @@
   const notifStatusEl   = document.getElementById('notifications-status');
   const enableNotifBtn  = document.getElementById('enable-notifications-btn');
 
-  const invoiceBanner     = document.getElementById('invoice-banner');
-  const invoicePeriodEl   = document.getElementById('invoice-period');
-  const invoiceTotalEl    = document.getElementById('invoice-total');
-  const invoiceRunningBanner   = document.getElementById('invoice-running-banner');
-  const invoiceRunningPeriodEl = document.getElementById('invoice-running-period');
-  const invoiceRunningTotalEl  = document.getElementById('invoice-running-total');
-  const invoiceRunningMetaEl   = document.getElementById('invoice-running-meta');
-  const invoiceRunningBankedEl = document.getElementById('invoice-running-banked');
-  const invoiceBreakdownEl= document.getElementById('invoice-breakdown');
-  const invoiceCopyBtn    = document.getElementById('invoice-copy-btn');
-  const invoiceMarkBtn    = document.getElementById('invoice-mark-sent-btn');
-  const invoiceSettingsBtn= document.getElementById('invoice-settings-btn');
-  const invoiceSetup      = document.getElementById('invoice-setup');
-  const invoiceSetupForm  = document.getElementById('invoice-setup-form');
-  const invoiceSetupDate  = document.getElementById('invoice-setup-date');
+  // Home-page summary card.
+  const invoiceCard         = document.getElementById('invoice-card');
+  const invoiceCardPeriodEl = document.getElementById('invoice-card-period');
+  const invoiceCardStatusEl = document.getElementById('invoice-card-status');
+  const invoiceCardTotalEl  = document.getElementById('invoice-card-total');
+  const invoiceCardMetaEl   = document.getElementById('invoice-card-meta');
+  const invoicePlanBtn      = document.getElementById('invoice-plan-btn');
+  const invoiceSettingsBtn  = document.getElementById('invoice-settings-btn');
+
+  // Full-screen planner page.
+  const invoicePlannerPage    = document.getElementById('invoice-planner-page');
+  const invoicePlannerBackBtn = document.getElementById('invoice-planner-back');
+  const invoicePlannerPeriod  = document.getElementById('invoice-planner-period');
+  const invoicePlannerGrand   = document.getElementById('invoice-planner-grand-total');
+  const invoicePlannerBodyEl  = document.getElementById('invoice-planner-body');
+  const invoicePlannerCopyBtn = document.getElementById('invoice-planner-copy');
+  const invoicePlannerSaveBtn = document.getElementById('invoice-planner-save');
+
+  const invoiceSetup        = document.getElementById('invoice-setup');
+  const invoiceSetupForm    = document.getElementById('invoice-setup-form');
+  const invoiceSetupDate    = document.getElementById('invoice-setup-date');
   const invoiceSetupDismiss = document.getElementById('invoice-setup-dismiss');
 
   const bankedSection     = document.getElementById('banked-section');
@@ -1280,9 +1286,9 @@
   function renderInvoice() {
     // No anchor → show the one-time setup prompt so the user can opt in.
     if (!invoiceAnchor) {
-      invoiceBanner.hidden = true;
-      invoiceRunningBanner.hidden = true;
+      invoiceCard.hidden = true;
       invoiceSetup.hidden = false;
+      closeInvoicePlanner();
       return;
     }
 
@@ -1290,46 +1296,48 @@
     invoiceSetup.hidden = true;
 
     if (!period) {
-      invoiceBanner.hidden = true;
-      invoiceRunningBanner.hidden = true;
+      invoiceCard.hidden = true;
+      closeInvoicePlanner();
       return;
     }
 
-    // The planner is visible whenever an anchor is set — both during the
-    // in-progress fortnight (so the user can plan ahead) and after it
-    // closes. The running-total banner is now redundant; the planner shows
-    // the same totals plus the day-grid.
-    invoiceRunningBanner.hidden = true;
-
     const breakdown = computeInvoiceBreakdown(invoiceSessions, period);
 
-    const titleEl = document.getElementById('invoice-title');
-    if (period.due) {
-      titleEl.textContent = 'Invoice ready';
-      invoiceMarkBtn.textContent = 'Mark as invoiced';
-    } else {
-      titleEl.textContent = 'Plan invoice (in progress)';
-      invoiceMarkBtn.textContent = 'Mark as invoiced now';
-    }
-    invoicePeriodEl.textContent = 'For ' + formatInvoicePeriod(period.start, period.end);
-    invoiceTotalEl.textContent  = fmtMoney(breakdown.total);
+    // ── Home-page summary card ──
+    invoiceCardPeriodEl.textContent = formatInvoicePeriod(period.start, period.end);
+    invoiceCardStatusEl.textContent = describePeriodStatus(period);
+    invoiceCardTotalEl.textContent  = fmtMoney(breakdown.total);
+    invoiceCardMetaEl.textContent   = buildCardMetaText(breakdown);
+    invoiceCard.hidden = false;
 
-    invoiceBreakdownEl.innerHTML = '';
+    // ── Planner page (only re-render if it's currently open) ──
+    if (!invoicePlannerPage.hidden) {
+      renderInvoicePlannerBody(period, breakdown);
+    }
+  }
+
+  function renderInvoicePlannerBody(period, breakdown) {
+    invoicePlannerPeriod.textContent = formatInvoicePeriod(period.start, period.end);
+    invoicePlannerGrand.textContent  = fmtMoney(breakdown.total);
+
+    invoicePlannerBodyEl.innerHTML = '';
     if (breakdown.entries.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'invoice-project-meta';
-      empty.textContent = 'No tracked work in this period — still want to mark it invoiced?';
-      invoiceBreakdownEl.appendChild(empty);
+      empty.textContent = 'No tracked work or banked hours in this period.';
+      invoicePlannerBodyEl.appendChild(empty);
     } else {
+      const list = document.createElement('div');
+      list.className = 'invoice-breakdown';
       for (const e of breakdown.entries) {
-        invoiceBreakdownEl.appendChild(buildInvoiceProjectRow(e));
+        list.appendChild(buildInvoiceProjectRow(e));
       }
+      invoicePlannerBodyEl.appendChild(list);
     }
 
-    // Stash data the action handlers need.
-    invoiceBanner.dataset.throughDate = localDateKey(period.end);
-    // One copy-paste line per billed day in Xero ordinal-date format.
-    invoiceBanner.dataset.lineItems = breakdown.entries
+    // Stash data the save / copy buttons need.
+    invoicePlannerBodyEl.dataset.throughDate = localDateKey(period.end);
+    invoicePlannerBodyEl.dataset.lineItems = breakdown.entries
       .filter((e) => e.days > 0)
       .map((e) => {
         const dates = [...e.selectedDates].sort();
@@ -1340,7 +1348,7 @@
           .join('\n');
       })
       .join('\n');
-    invoiceBanner.dataset.invoicedPayload = JSON.stringify(
+    invoicePlannerBodyEl.dataset.invoicedPayload = JSON.stringify(
       breakdown.entries.map((e) => ({
         project_id: e.id,
         tracked_seconds: Math.round(e.trackedSeconds),
@@ -1348,8 +1356,62 @@
       })),
     );
 
-    invoiceCopyBtn.disabled = breakdown.entries.every((e) => e.days === 0);
-    invoiceBanner.hidden = false;
+    const noBilling = breakdown.entries.every((e) => e.days === 0);
+    invoicePlannerCopyBtn.disabled = noBilling;
+    invoicePlannerSaveBtn.textContent = period.due
+      ? 'Save & process invoice'
+      : 'Save & process invoice now';
+  }
+
+  function describePeriodStatus(period) {
+    const todayKey = localDateKey(new Date());
+    const endKey = localDateKey(period.end);
+    if (todayKey > endKey) return 'Ready to bill — period closed';
+    if (todayKey === endKey) return 'Ready to bill — final day';
+    const msPerDay = 86400000;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const end = new Date(period.end);
+    end.setHours(0, 0, 0, 0);
+    const days = Math.max(0, Math.round((end - today) / msPerDay));
+    return 'In progress · ' + days + (days === 1 ? ' day' : ' days') + ' left';
+  }
+
+  function buildCardMetaText(breakdown) {
+    if (breakdown.entries.length === 0) return '';
+    const trackedTotal = breakdown.entries.reduce((s, e) => s + e.trackedSeconds, 0);
+    const bankedInTotal = breakdown.entries.reduce((s, e) => s + e.bankedIn, 0);
+    const daysTotal     = breakdown.entries.reduce((s, e) => s + e.days, 0);
+    const bankedOutSec  = breakdown.entries.reduce((s, e) => s + e.bankedOut, 0);
+    const tracked = formatHM(trackedTotal);
+    const inPart  = bankedInTotal === 0
+      ? ''
+      : bankedInTotal > 0
+        ? ' + ' + formatHM(bankedInTotal) + ' banked'
+        : ' − ' + formatHM(Math.abs(bankedInTotal)) + ' pre-billed';
+    const head = tracked + ' tracked' + inPart;
+    if (daysTotal === 0 && bankedOutSec === 0) return head;
+    const carry = bankedOutSec > 0
+      ? ' · ' + formatHM(bankedOutSec) + ' banks forward'
+      : bankedOutSec < 0
+        ? ' · ' + formatHM(Math.abs(bankedOutSec)) + ' pre-billed forward'
+        : '';
+    return head + ' · ' + daysTotal + ' × 8h day' + (daysTotal === 1 ? '' : 's') + carry;
+  }
+
+  function openInvoicePlanner() {
+    if (!invoiceAnchor) return;
+    document.body.classList.add('planner-open');
+    invoicePlannerPage.hidden = false;
+    // Force re-render so the planner body fills in.
+    renderInvoice();
+    // Send focus to the back button for keyboard users.
+    if (invoicePlannerBackBtn) invoicePlannerBackBtn.focus();
+  }
+
+  function closeInvoicePlanner() {
+    document.body.classList.remove('planner-open');
+    if (invoicePlannerPage) invoicePlannerPage.hidden = true;
   }
 
   // One expandable row per project in the invoice-due banner. Header shows
@@ -1605,47 +1667,48 @@
   }
 
   async function copyInvoiceLineItems() {
-    const text = invoiceBanner.dataset.lineItems || '';
+    const text = invoicePlannerBodyEl.dataset.lineItems || '';
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
-      const prev = invoiceCopyBtn.textContent;
-      invoiceCopyBtn.textContent = 'Copied!';
-      setTimeout(() => { invoiceCopyBtn.textContent = prev; }, 1500);
+      const prev = invoicePlannerCopyBtn.textContent;
+      invoicePlannerCopyBtn.textContent = 'Copied!';
+      setTimeout(() => { invoicePlannerCopyBtn.textContent = prev; }, 1500);
     } catch (err) {
       // Clipboard API may be blocked (e.g. non-secure context) — fall back to prompt.
       prompt('Copy the invoice line items:', text);
     }
   }
 
-  async function markInvoiceSent() {
-    const through = invoiceBanner.dataset.throughDate;
+  async function saveInvoice() {
+    const through = invoicePlannerBodyEl.dataset.throughDate;
     if (!through) return;
     const todayKey = localDateKey(new Date());
     const isMidPeriod = todayKey <= through;
     const message = isMidPeriod
-      ? 'Mark these days as invoiced now? The current fortnight isn\'t officially ' +
+      ? 'Save and process this invoice now? The current fortnight isn\'t officially ' +
         'over until ' + through + '.\n\n' +
         'Any time you log in the remaining days won\'t roll into the next invoice ' +
         'automatically — track it as usual and use the Edit button on Banked hours ' +
         'to add it to your bank if needed.\n\n' +
         'Continue?'
-      : 'Mark these days as invoiced and start the next fortnight?\n\n' +
-        'Any leftover hours will be banked forward as still-chargeable for ' +
-        'your next invoice.';
+      : 'Save and process this invoice? The next fortnight will start fresh and ' +
+        'any leftover hours will be banked forward as still-chargeable for your ' +
+        'next invoice.';
     if (!confirm(message)) return;
-    invoiceMarkBtn.disabled = true;
+    invoicePlannerSaveBtn.disabled = true;
     try {
       let invoiced = [];
-      try { invoiced = JSON.parse(invoiceBanner.dataset.invoicedPayload || '[]'); }
+      try { invoiced = JSON.parse(invoicePlannerBodyEl.dataset.invoicedPayload || '[]'); }
       catch (_) { invoiced = []; }
       await api('POST', '/api/invoice/mark-sent', { through, invoiced });
       invoiceSelectedDays = {};
+      closeInvoicePlanner();
       await loadInvoiceStatus();
     } catch (err) {
-      alert('Could not update invoice status: ' + err.message);
+      alert('Could not save invoice: ' + err.message);
     } finally {
-      invoiceMarkBtn.disabled = false;
+      invoicePlannerSaveBtn.disabled = false;
     }
   }
 
@@ -1806,12 +1869,19 @@
   newProjectInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addProject(); });
   bannerStopBtn.addEventListener('click', () => stopTimer());
 
-  invoiceCopyBtn.addEventListener('click', copyInvoiceLineItems);
-  invoiceMarkBtn.addEventListener('click', markInvoiceSent);
+  invoicePlanBtn.addEventListener('click', openInvoicePlanner);
+  invoicePlannerBackBtn.addEventListener('click', closeInvoicePlanner);
+  invoicePlannerCopyBtn.addEventListener('click', copyInvoiceLineItems);
+  invoicePlannerSaveBtn.addEventListener('click', saveInvoice);
   invoiceSettingsBtn.addEventListener('click', openInvoiceSettings);
   invoiceSetupForm.addEventListener('submit', submitInvoiceSetup);
   invoiceSetupDismiss.addEventListener('click', dismissInvoiceSetup);
   invoiceRewindBtn.addEventListener('click', rewindInvoice);
+
+  // Close the planner page on Escape.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !invoicePlannerPage.hidden) closeInvoicePlanner();
+  });
 
   // ── Boot ─────────────────────────────────────────────────────────────────
 

@@ -127,101 +127,140 @@ h1 {
 }
 .app-footer a:hover { color: var(--accent-h); text-decoration: underline; }
 
-/* ── Next-invoice running total ─────────────────────────────── */
-.invoice-running-banner {
+/* ── Home-page invoice card ─────────────────────────────────── */
+.invoice-card {
   background: #14202b;
   border: 1px solid #2c4d72;
   border-left: 4px solid var(--accent);
   border-radius: var(--radius);
-  padding: 0.85rem 1.1rem;
-  margin-bottom: 1rem;
+  padding: 0.95rem 1.1rem;
+  margin-bottom: 1.25rem;
 }
+.invoice-card[hidden] { display: none; }
 
-.invoice-running-banner[hidden] { display: none; }
-
-.invoice-running-head {
+.invoice-card-head {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 1rem;
 }
 
-.invoice-running-title {
-  font-weight: 600;
+.invoice-card-title {
+  font-weight: 700;
   color: var(--accent);
   font-size: 1rem;
 }
 
-.invoice-running-period {
+.invoice-card-status {
   color: var(--muted);
   font-size: 0.8rem;
-  margin-top: 0.1rem;
+  margin-top: 0.15rem;
 }
 
-.invoice-running-total {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.invoice-running-meta {
-  color: var(--muted);
-  font-size: 0.85rem;
-  margin-top: 0.4rem;
-}
-
-.invoice-running-banked {
-  color: var(--text);
-  font-size: 0.9rem;
-  margin-top: 0.35rem;
-  padding-top: 0.35rem;
-  border-top: 1px dashed var(--border);
-  font-variant-numeric: tabular-nums;
-}
-
-.invoice-running-banked[hidden] { display: none; }
-
-/* ── Invoice-due banner ─────────────────────────────────────── */
-.invoice-banner {
-  background: #14231a;
-  border: 1px solid #2e6b44;
-  border-left: 4px solid var(--success);
-  border-radius: var(--radius);
-  padding: 1rem 1.1rem;
-  margin-bottom: 1.25rem;
-}
-
-.invoice-banner[hidden] { display: none; }
-
-.invoice-banner-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 1rem;
-  margin-bottom: 0.75rem;
-}
-
-.invoice-title {
-  font-weight: 700;
-  color: var(--success);
-  font-size: 1.05rem;
-}
-
-.invoice-period {
-  color: var(--muted);
-  font-size: 0.85rem;
-  margin-top: 0.1rem;
-}
-
-.invoice-total {
+.invoice-card-total {
   font-size: 1.45rem;
   font-weight: 700;
   color: var(--text);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+.invoice-card-meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-top: 0.55rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--border);
+  font-variant-numeric: tabular-nums;
+}
+.invoice-card-meta:empty { display: none; }
+
+.invoice-card-actions {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 0.85rem;
+}
+.invoice-card-actions .btn-primary { flex: 1; min-width: 0; }
+
+/* ── Full-screen invoice planner page ───────────────────────── */
+.invoice-planner-page {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.invoice-planner-page[hidden] { display: none; }
+
+.invoice-planner-header {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.6rem;
+  align-items: center;
+  padding: env(safe-area-inset-top) 1rem 0.65rem;
+  padding-top: calc(env(safe-area-inset-top) + 0.65rem);
+  border-bottom: 1px solid var(--border);
+  background: #14202b;
+}
+
+.invoice-planner-back {
+  font-size: 0.95rem;
+  padding: 0.25rem 0.4rem;
+  white-space: nowrap;
+}
+
+.invoice-planner-title-block {
+  min-width: 0;
+}
+
+.invoice-planner-title {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.invoice-planner-period {
+  color: var(--muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.invoice-planner-grand-total {
+  color: var(--accent);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  font-size: 1.05rem;
+}
+
+.invoice-planner-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 1rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+.invoice-planner-footer {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem calc(env(safe-area-inset-bottom) + 0.85rem);
+  border-top: 1px solid var(--border);
+  background: #14202b;
+}
+.invoice-planner-footer .btn-primary { flex: 1; }
+.invoice-planner-footer .btn-secondary { flex: 1; }
+
+/* Lock body scroll while the planner is open. */
+body.planner-open { overflow: hidden; }
 
 .invoice-breakdown {
   display: flex;
