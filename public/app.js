@@ -85,6 +85,19 @@
     return `${ordinal(d)} ${monthName} ${y}`;
   }
 
+  // Returns the 10 Mon-Fri date keys spanning a fortnight that starts on a
+  // Monday. Used as the slot grid in the invoice planner — each slot is one
+  // 8h day the user can choose to bill for.
+  function fortnightWeekdays(periodStart) {
+    const out = [];
+    for (let i = 0; i < 14; i++) {
+      const d = addDays(periodStart, i);
+      const dow = d.getDay();
+      if (dow !== 0 && dow !== 6) out.push(localDateKey(d));
+    }
+    return out;
+  }
+
   function formatInvoicePeriod(startDate, endDate) {
     const shortOpts = { day: 'numeric', month: 'short' };
     const longOpts  = { day: 'numeric', month: 'short', year: 'numeric' };
@@ -147,7 +160,9 @@
   let invoiceAnchor = null;         // "YYYY-MM-DD" — last Sunday we've invoiced through, or null.
   let invoiceSessions = [];         // raw sessions since the anchor (for fortnight rollup).
   let invoiceProjectsMeta = {};     // { [projectId]: { hours_banked_seconds } } from the server.
-  let invoiceDaysOverride = {};     // { [projectId]: invoicedDays } — user-adjusted day counts.
+  // { [projectId]: Set<dateKey> } — weekdays the user has marked as a
+  // billable 8h day for this fortnight. Lives in memory until mark-as-invoiced.
+  let invoiceSelectedDays = {};
   let invoiceHistory = [];          // [{ id, period_start, period_end, sent_at, total_amount, line_items[] }]
   let expandedInvoices = new Set(); // invoice ids currently showing line items
 
@@ -882,11 +897,15 @@
 
   // Fortnight rollup with banking:
   //   • tracked_seconds  = time tracked in the period
-  //   • banked_seconds   = carry-in from previous cycles (can be negative)
-  //   • total_seconds    = tracked + banked → the hours we're rounding
-  //   • suggested_days   = round(total_seconds / 8h)      (never below 0)
-  //   • days             = user override, or suggested_days
-  //   • new_banked       = total_seconds − days × 8h      (carries forward)
+  //   • banked_seconds   = carry-in from prior invoices (positive = credit)
+  //   • total_seconds    = tracked + banked → the pool of chargeable time
+  //   • weekdayKeys      = the 10 Mon–Fri slots in the fortnight
+  //   • maxDays          = floor(total_seconds / 8h), capped at 10 — hard
+  //                        ceiling so we never bill more hours than we have
+  //   • selectedDates    = which weekday slots the user has marked billable;
+  //                        defaults to the first maxDays slots in date order
+  //   • days             = selectedDates.size
+  //   • bankedOut        = total_seconds − days × 8h    (rolls forward)
   //
   // A project appears in the breakdown if it has tracked time in the period
   // OR a non-zero banked balance (so old bank dust doesn't get stranded).
@@ -928,18 +947,36 @@
     }
 
     const perDay = HOURS_PER_DAY * 3600;
+    const weekdayKeys = fortnightWeekdays(period.start);
+
     const entries = [...byProject.values()]
       .map((p) => {
         const dates = Object.keys(p.secondsByDate).sort();
         const trackedSeconds = dates.reduce((t, k) => t + p.secondsByDate[k], 0);
         const bankedIn = Number(invoiceProjectsMeta[p.id]?.hours_banked_seconds) || 0;
         const totalSeconds = trackedSeconds + bankedIn;
-        // Floor: only full 8h days are billed by default, anything left rolls
-        // into the bank as hours-still-chargeable. The user can nudge the
-        // count up with "+" to spend their bank or pre-bill on purpose.
-        const suggestedDays = Math.max(0, Math.floor(totalSeconds / perDay));
-        const override = invoiceDaysOverride[p.id];
-        const days = Number.isFinite(override) ? Math.max(0, override) : suggestedDays;
+        // Hard cap on billable days: floor(pool/8h), and never more than the
+        // 10 weekday slots available. Anything left over banks forward.
+        const maxDays = Math.max(0, Math.min(weekdayKeys.length, Math.floor(totalSeconds / perDay)));
+
+        // Selected slots default to the first maxDays weekdays in date order
+        // (so the auto-suggestion fills Mon→Fri, week 1 → week 2). The user
+        // can click cells to swap which days are billed.
+        let selectedDates = invoiceSelectedDays[p.id];
+        if (selectedDates instanceof Set) {
+          // Drop any selections that aren't in this period's weekday list
+          // (e.g. period changed) and cap at maxDays. Sort by date key so
+          // the cap is deterministic (keeps the earliest weekdays).
+          const valid = [...selectedDates]
+            .filter((k) => weekdayKeys.includes(k))
+            .sort();
+          selectedDates = new Set(valid.slice(0, maxDays));
+        } else {
+          selectedDates = new Set(weekdayKeys.slice(0, maxDays));
+        }
+        invoiceSelectedDays[p.id] = selectedDates;
+
+        const days = selectedDates.size;
         const bankedOut = totalSeconds - days * perDay;
         return {
           id: p.id,
@@ -950,10 +987,11 @@
           trackedSeconds,
           bankedIn,
           totalSeconds,
-          suggestedDays,
+          weekdayKeys,
+          selectedDates,
+          maxDays,
           days,
           bankedOut,
-          isOverride: Number.isFinite(override) && override !== suggestedDays,
           amount: days * p.daily_rate,
         };
       })
@@ -1304,12 +1342,17 @@
 
     // Stash data the action handlers need.
     invoiceBanner.dataset.throughDate = localDateKey(period.end);
+    // One copy-paste line per billed day in Xero ordinal-date format.
     invoiceBanner.dataset.lineItems = breakdown.entries
       .filter((e) => e.days > 0)
-      .map((e) =>
-        e.name + ' — ' + e.days + ' day' + (e.days === 1 ? '' : 's') +
-        ' @ ' + fmtMoney(e.daily_rate) + ' = ' + fmtMoney(e.amount),
-      )
+      .map((e) => {
+        const dates = [...e.selectedDates].sort();
+        return dates
+          .map((d) =>
+            e.name + ' — ' + formatOrdinalDate(d) + ': ' + fmtMoney(e.daily_rate),
+          )
+          .join('\n');
+      })
       .join('\n');
     invoiceBanner.dataset.invoicedPayload = JSON.stringify(
       breakdown.entries.map((e) => ({
@@ -1324,23 +1367,24 @@
   }
 
   // One expandable row per project in the invoice-due banner. Header shows
-  // the suggested day count with ▼/▲ nudges; expanded body shows per-day
-  // tracked hours plus the banked-hours math that drove the suggestion.
+  // the day count + amount; expanded body is the Mon–Fri × 2 planner where
+  // the user assigns 8h slots from the (tracked + banked) pool.
   function buildInvoiceProjectRow(entry) {
     const row = document.createElement('div');
     row.className = 'invoice-project-row';
+    row.classList.add('expanded'); // open by default — this is the planner
 
     const head = document.createElement('button');
     head.type = 'button';
     head.className = 'invoice-project-head';
-    head.setAttribute('aria-expanded', 'false');
+    head.setAttribute('aria-expanded', 'true');
 
     const left = document.createElement('div');
     left.className = 'invoice-project-head-left';
 
     const caret = document.createElement('span');
     caret.className = 'invoice-caret';
-    caret.textContent = '▸';
+    caret.textContent = '▾';
     caret.setAttribute('aria-hidden', 'true');
 
     const nameBlock = document.createElement('div');
@@ -1365,54 +1409,25 @@
 
     const details = document.createElement('div');
     details.className = 'invoice-project-dates';
-    details.hidden = true;
 
-    // Day-count adjuster — nudges the invoiced days up/down one at a time.
-    const adjuster = document.createElement('div');
-    adjuster.className = 'invoice-day-adjuster';
+    // Pool summary — the headline "you have X hours to play with" line.
+    const pool = document.createElement('div');
+    pool.className = 'invoice-pool-line';
+    pool.textContent = buildPoolLineText(entry);
+    details.appendChild(pool);
 
-    const adjLabel = document.createElement('span');
-    adjLabel.className = 'invoice-day-adjuster-label';
-    adjLabel.textContent = 'Invoice';
-
-    const decBtn = document.createElement('button');
-    decBtn.type = 'button';
-    decBtn.className = 'invoice-day-btn';
-    decBtn.setAttribute('aria-label', 'Bill one fewer day');
-    decBtn.textContent = '−';
-
-    const dayCount = document.createElement('span');
-    dayCount.className = 'invoice-day-count';
-    dayCount.textContent = entry.days + (entry.days === 1 ? ' day' : ' days');
-
-    const incBtn = document.createElement('button');
-    incBtn.type = 'button';
-    incBtn.className = 'invoice-day-btn';
-    incBtn.setAttribute('aria-label', 'Bill one more day');
-    incBtn.textContent = '+';
-
-    const reset = document.createElement('button');
-    reset.type = 'button';
-    reset.className = 'btn-link invoice-day-reset';
-    reset.textContent = 'Reset';
-    reset.hidden = !entry.isOverride;
-
-    decBtn.disabled = entry.days <= 0;
-
-    adjuster.appendChild(adjLabel);
-    adjuster.appendChild(decBtn);
-    adjuster.appendChild(dayCount);
-    adjuster.appendChild(incBtn);
-    adjuster.appendChild(reset);
-    details.appendChild(adjuster);
-
-    // Banking math — visible so the user can see where the number came from.
+    // Plain-English banking math (what's billed, what banks forward).
     const bankLine = document.createElement('div');
     bankLine.className = 'invoice-bank-line';
     bankLine.textContent = buildBankLineText(entry);
     details.appendChild(bankLine);
 
-    // Per-day breakdown.
+    // Mon–Fri × 2 grid. Each cell is a date the user can toggle as a
+    // billable 8h day. Cells lock once the pool can't fit another day.
+    details.appendChild(buildWeekdayPicker(entry));
+
+    // Optional per-day tracked detail underneath. Helps the user see which
+    // days actually had work logged when picking which to bill.
     if (entry.dates.length > 0) {
       const datesHdr = document.createElement('div');
       datesHdr.className = 'invoice-dates-header';
@@ -1434,32 +1449,124 @@
     }
 
     head.addEventListener('click', () => {
-      const nowOpen = details.hidden;
+      const nowOpen = !!details.hidden;
       details.hidden = !nowOpen;
       row.classList.toggle('expanded', nowOpen);
       caret.textContent = nowOpen ? '▾' : '▸';
       head.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
     });
 
-    decBtn.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      invoiceDaysOverride[entry.id] = Math.max(0, entry.days - 1);
-      renderInvoice();
-    });
-    incBtn.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      invoiceDaysOverride[entry.id] = entry.days + 1;
-      renderInvoice();
-    });
-    reset.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      delete invoiceDaysOverride[entry.id];
-      renderInvoice();
-    });
-
     row.appendChild(head);
     row.appendChild(details);
     return row;
+  }
+
+  // Mon–Fri × 2 weeks of buttons. Each cell is one 8h slot the user can
+  // toggle on/off. The pool (tracked + banked) caps how many can be on at
+  // once — surplus cells render as locked and ignore clicks. Selected
+  // cells highlight green so it's obvious what's being billed.
+  function buildWeekdayPicker(entry) {
+    const wrap = document.createElement('div');
+    wrap.className = 'invoice-planner';
+
+    for (let week = 0; week < 2; week++) {
+      const wkLabel = document.createElement('div');
+      wkLabel.className = 'invoice-planner-week-label';
+      wkLabel.textContent = 'Week ' + (week + 1);
+      wrap.appendChild(wkLabel);
+
+      const grid = document.createElement('div');
+      grid.className = 'invoice-planner-grid';
+
+      const startIdx = week * 5;
+      for (let i = 0; i < 5; i++) {
+        const dateKey = entry.weekdayKeys[startIdx + i];
+        if (!dateKey) continue;
+        grid.appendChild(buildDayCell(entry, dateKey));
+      }
+      wrap.appendChild(grid);
+    }
+
+    return wrap;
+  }
+
+  function buildDayCell(entry, dateKey) {
+    const isSelected = entry.selectedDates.has(dateKey);
+    const poolFull   = entry.selectedDates.size >= entry.maxDays;
+    const isLocked   = !isSelected && poolFull;
+
+    const cell = document.createElement('button');
+    cell.type = 'button';
+    cell.className = 'invoice-day-cell' +
+      (isSelected ? ' selected' : '') +
+      (isLocked   ? ' locked'   : '');
+    cell.disabled = isLocked;
+    cell.setAttribute(
+      'aria-pressed',
+      isSelected ? 'true' : 'false',
+    );
+
+    const [y, m, d] = dateKey.split('-').map(Number);
+    const dateObj = new Date(y, m - 1, d);
+
+    const dayName = document.createElement('span');
+    dayName.className = 'invoice-day-cell-name';
+    dayName.textContent = dateObj.toLocaleDateString(undefined, { weekday: 'short' });
+
+    const dayNum = document.createElement('span');
+    dayNum.className = 'invoice-day-cell-num';
+    dayNum.textContent =
+      d + ' ' + dateObj.toLocaleDateString(undefined, { month: 'short' });
+
+    const billed = document.createElement('span');
+    billed.className = 'invoice-day-cell-billed';
+    billed.textContent = isSelected ? '8h' : '—';
+
+    // Show tracked-on-this-date if any, so the user has context for which
+    // days they actually worked.
+    const trackedSec = entry.secondsByDate[dateKey] || 0;
+    if (trackedSec > 0) {
+      const note = document.createElement('span');
+      note.className = 'invoice-day-cell-tracked';
+      note.textContent = 'tracked ' + formatHM(trackedSec);
+      cell.appendChild(dayName);
+      cell.appendChild(dayNum);
+      cell.appendChild(billed);
+      cell.appendChild(note);
+    } else {
+      cell.appendChild(dayName);
+      cell.appendChild(dayNum);
+      cell.appendChild(billed);
+    }
+
+    cell.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const sel = invoiceSelectedDays[entry.id] || new Set();
+      if (sel.has(dateKey)) {
+        sel.delete(dateKey);
+      } else if (sel.size < entry.maxDays) {
+        sel.add(dateKey);
+      } else {
+        return; // pool full
+      }
+      invoiceSelectedDays[entry.id] = sel;
+      renderInvoice();
+    });
+
+    return cell;
+  }
+
+  function buildPoolLineText(entry) {
+    const tracked = formatHM(entry.trackedSeconds);
+    const banked  = entry.bankedIn === 0
+      ? ''
+      : entry.bankedIn > 0
+        ? ' + ' + formatHM(entry.bankedIn) + ' banked'
+        : ' − ' + formatHM(Math.abs(entry.bankedIn)) + ' pre-billed';
+    const pool = formatSignedHM(entry.totalSeconds);
+    const slots = ' → up to ' + entry.maxDays +
+      (entry.maxDays === 1 ? ' day' : ' days') + ' (' + entry.maxDays * HOURS_PER_DAY + 'h)';
+    return tracked + ' tracked' + banked + ' = ' + pool + ' to allocate' + slots;
   }
 
   function buildRowMetaText(entry) {
@@ -1539,7 +1646,7 @@
       try { invoiced = JSON.parse(invoiceBanner.dataset.invoicedPayload || '[]'); }
       catch (_) { invoiced = []; }
       await api('POST', '/api/invoice/mark-sent', { through, invoiced });
-      invoiceDaysOverride = {};
+      invoiceSelectedDays = {};
       await loadInvoiceStatus();
     } catch (err) {
       alert('Could not update invoice status: ' + err.message);

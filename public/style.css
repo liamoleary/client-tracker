@@ -301,42 +301,94 @@ h1 {
   white-space: nowrap;
 }
 
-.invoice-day-adjuster {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  padding: 0.35rem 0;
-}
-.invoice-day-adjuster-label {
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-.invoice-day-btn {
-  width: 1.9rem;
-  height: 1.9rem;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: #1a1a1f;
+/* ── Invoice planner: pool line + Mon–Fri grid ─────────────── */
+.invoice-pool-line {
   color: var(--text);
-  font-size: 1rem;
-  line-height: 1;
-  cursor: pointer;
-  display: inline-flex;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 0.45rem 0 0.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.invoice-planner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.5rem 0 0.6rem;
+}
+
+.invoice-planner-week-label {
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding-top: 0.25rem;
+}
+
+.invoice-planner-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.invoice-day-cell {
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-}
-.invoice-day-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-.invoice-day-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.invoice-day-count {
-  min-width: 3.5rem;
-  text-align: center;
+  gap: 0.1rem;
+  padding: 0.5rem 0.25rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: #161922;
   color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  text-align: center;
+  min-height: 4.4rem;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.invoice-day-cell:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.invoice-day-cell.selected {
+  background: #1d3a26;
+  border-color: var(--success);
+  color: var(--text);
+}
+.invoice-day-cell.selected:hover { border-color: #4caf76; }
+.invoice-day-cell.locked {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.invoice-day-cell-name {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.invoice-day-cell.selected .invoice-day-cell-name { color: var(--success); }
+
+.invoice-day-cell-num {
+  font-size: 0.85rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-.invoice-day-reset { font-size: 0.8rem; }
-.invoice-day-reset[hidden] { display: none; }
+
+.invoice-day-cell-billed {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.invoice-day-cell.selected .invoice-day-cell-billed { color: var(--success); }
+
+.invoice-day-cell-tracked {
+  font-size: 0.65rem;
+  color: var(--muted);
+  margin-top: 0.1rem;
+}
 
 .invoice-bank-line {
   color: var(--muted);
