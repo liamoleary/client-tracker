@@ -120,8 +120,8 @@ router.post('/mark-sent', (req, res) => {
     : addDaysISO(snapped, -13);   // fall back to a Mon–Sun fortnight
 
   const selProject = db.prepare('SELECT id, name, daily_rate, hours_banked_seconds FROM projects WHERE id = ?');
-  const updateBanked = db.prepare(
-    'UPDATE projects SET hours_banked_seconds = hours_banked_seconds + ? WHERE id = ?',
+  const setBanked = db.prepare(
+    'UPDATE projects SET hours_banked_seconds = ? WHERE id = ?',
   );
   const insInvoice = db.prepare(
     `INSERT INTO invoices (period_start, period_end, total_amount) VALUES (?, ?, ?)`,
@@ -143,11 +143,14 @@ router.post('/mark-sent', (req, res) => {
       if (!Number.isFinite(pid) || pid <= 0) continue;
       const proj = selProject.get(pid);
       if (!proj) continue;
-      const bankedIn = proj.hours_banked_seconds;
+      // Banked is always non-negative — represents still-chargeable hours.
+      // If a caller manages to bill more days than the pool covers, clamp
+      // the carry-forward at zero rather than leaving a "pre-billed" debt.
+      const bankedIn = Math.max(0, proj.hours_banked_seconds);
       const delta = tracked - days * SECONDS_PER_BILLABLE_DAY;
-      const bankedOut = bankedIn + delta;
+      const bankedOut = Math.max(0, bankedIn + delta);
       const amount = days * proj.daily_rate;
-      updateBanked.run(delta, pid);
+      setBanked.run(bankedOut, pid);
       lines.push({
         project_id: pid,
         project_name: proj.name,
@@ -226,10 +229,10 @@ router.post('/rewind', (req, res) => {
     'SELECT id FROM invoices WHERE period_end = ? ORDER BY id DESC LIMIT 1',
   );
   const selLines = db.prepare(
-    'SELECT project_id, tracked_seconds, invoiced_days FROM invoice_line_items WHERE invoice_id = ?',
+    'SELECT project_id, banked_in_seconds FROM invoice_line_items WHERE invoice_id = ?',
   );
-  const updateBanked = db.prepare(
-    'UPDATE projects SET hours_banked_seconds = hours_banked_seconds + ? WHERE id = ?',
+  const setBanked = db.prepare(
+    'UPDATE projects SET hours_banked_seconds = ? WHERE id = ?',
   );
   const delLines = db.prepare('DELETE FROM invoice_line_items WHERE invoice_id = ?');
   const delInvoice = db.prepare('DELETE FROM invoices WHERE id = ?');
@@ -238,11 +241,13 @@ router.post('/rewind', (req, res) => {
     const match = selInvoice.get(anchor);
     let reversed = false;
     if (match) {
+      // Each line item recorded the project's bank balance going IN to that
+      // invoice. Restoring it directly is exact and side-steps any rounding
+      // or clamping drift the forward delta would suffer.
       const lines = selLines.all(match.id);
       for (const l of lines) {
         if (!l.project_id) continue;
-        const delta = -(l.tracked_seconds - l.invoiced_days * SECONDS_PER_BILLABLE_DAY);
-        updateBanked.run(delta, l.project_id);
+        setBanked.run(Math.max(0, l.banked_in_seconds), l.project_id);
       }
       delLines.run(match.id);
       delInvoice.run(match.id);
@@ -259,6 +264,7 @@ router.post('/rewind', (req, res) => {
 // POST /api/invoice/banked  { project_id, hours_banked_seconds }
 // Set a project's banked balance directly. Used to reconcile after a rewind
 // when the matching invoice was pre-history (no line items to reverse).
+// Clamped at zero — banked represents still-chargeable hours, never debt.
 router.post('/banked', (req, res) => {
   const pid = Number(req.body?.project_id);
   const value = Number(req.body?.hours_banked_seconds);
@@ -268,11 +274,12 @@ router.post('/banked', (req, res) => {
   if (!Number.isFinite(value)) {
     return res.status(400).json({ error: 'hours_banked_seconds must be a number' });
   }
+  const stored = Math.max(0, Math.round(value));
   const result = db
     .prepare('UPDATE projects SET hours_banked_seconds = ? WHERE id = ?')
-    .run(Math.round(value), pid);
+    .run(stored, pid);
   if (result.changes === 0) return res.status(404).json({ error: 'project not found' });
-  res.json({ project_id: pid, hours_banked_seconds: Math.round(value) });
+  res.json({ project_id: pid, hours_banked_seconds: stored });
 });
 
 module.exports = router;

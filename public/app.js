@@ -1024,13 +1024,13 @@
     }
 
     // Banked carry-in across all projects, valued at each project's hourly
-    // rate. Positive = unbilled hours rolling into the next fortnight;
-    // negative = hours already pre-billed in a prior invoice.
+    // rate. Always non-negative — represents unbilled hours rolling into
+    // the next invoice's pool.
     let bankedSeconds = 0;
     let bankedAmount = 0;
     for (const p of (projects || [])) {
       const meta = invoiceProjectsMeta[p.id];
-      const sec = Number(meta?.hours_banked_seconds) || 0;
+      const sec = Math.max(0, Number(meta?.hours_banked_seconds) || 0);
       if (sec === 0) continue;
       bankedSeconds += sec;
       bankedAmount  += calcEarnings(sec, Number(p.daily_rate) || 0);
@@ -1082,7 +1082,7 @@
     const rows = [];
     for (const id of Object.keys(invoiceProjectsMeta)) {
       const meta = invoiceProjectsMeta[id];
-      const sec = Number(meta.hours_banked_seconds) || 0;
+      const sec = Math.max(0, Number(meta.hours_banked_seconds) || 0);
       if (sec === 0) continue;
       const proj = projects.find((p) => String(p.id) === String(id));
       rows.push({ id, name: meta.name || proj?.name || ('Project ' + id), sec });
@@ -1112,9 +1112,8 @@
         name.className = 'banked-name';
         name.textContent = r.name;
         const val = document.createElement('span');
-        val.className = 'banked-value ' + (r.sec > 0 ? 'positive' : r.sec < 0 ? 'negative' : 'zero');
-        const sign = r.sec > 0 ? '+' : r.sec < 0 ? '-' : '';
-        val.textContent = sign + formatHM(Math.abs(r.sec));
+        val.className = 'banked-value ' + (r.sec > 0 ? 'positive' : 'zero');
+        val.textContent = formatHM(r.sec);
         const edit = document.createElement('button');
         edit.type = 'button';
         edit.className = 'banked-edit';
@@ -1133,13 +1132,13 @@
   async function editBankedHours(row) {
     const currentHours = (row.sec / 3600).toFixed(2);
     const input = prompt(
-      'Banked hours for "' + row.name + '" (negative = pre-billed):',
+      'Hours still chargeable for "' + row.name + '":',
       currentHours,
     );
     if (input === null) return;
     const hrs = Number(input);
-    if (!Number.isFinite(hrs)) {
-      alert('Enter a number, e.g. 2.5 or -1.25');
+    if (!Number.isFinite(hrs) || hrs < 0) {
+      alert('Enter a non-negative number, e.g. 2.5');
       return;
     }
     try {
@@ -1379,23 +1378,17 @@
 
   function buildCardMetaText(breakdown) {
     if (breakdown.entries.length === 0) return '';
-    const trackedTotal = breakdown.entries.reduce((s, e) => s + e.trackedSeconds, 0);
+    const trackedTotal  = breakdown.entries.reduce((s, e) => s + e.trackedSeconds, 0);
     const bankedInTotal = breakdown.entries.reduce((s, e) => s + e.bankedIn, 0);
     const daysTotal     = breakdown.entries.reduce((s, e) => s + e.days, 0);
     const bankedOutSec  = breakdown.entries.reduce((s, e) => s + e.bankedOut, 0);
     const tracked = formatHM(trackedTotal);
-    const inPart  = bankedInTotal === 0
-      ? ''
-      : bankedInTotal > 0
-        ? ' + ' + formatHM(bankedInTotal) + ' banked'
-        : ' − ' + formatHM(Math.abs(bankedInTotal)) + ' pre-billed';
-    const head = tracked + ' tracked' + inPart;
+    const inPart  = bankedInTotal > 0 ? ' + ' + formatHM(bankedInTotal) + ' banked' : '';
+    const head    = tracked + ' tracked' + inPart;
     if (daysTotal === 0 && bankedOutSec === 0) return head;
     const carry = bankedOutSec > 0
       ? ' · ' + formatHM(bankedOutSec) + ' banks forward'
-      : bankedOutSec < 0
-        ? ' · ' + formatHM(Math.abs(bankedOutSec)) + ' pre-billed forward'
-        : '';
+      : '';
     return head + ' · ' + daysTotal + ' × 8h day' + (daysTotal === 1 ? '' : 's') + carry;
   }
 
@@ -1606,13 +1599,9 @@
 
   function buildPoolLineText(entry) {
     const tracked = formatHM(entry.trackedSeconds);
-    const banked  = entry.bankedIn === 0
-      ? ''
-      : entry.bankedIn > 0
-        ? ' + ' + formatHM(entry.bankedIn) + ' banked'
-        : ' − ' + formatHM(Math.abs(entry.bankedIn)) + ' pre-billed';
-    const pool = formatSignedHM(entry.totalSeconds);
-    const slots = ' → up to ' + entry.maxDays +
+    const banked  = entry.bankedIn > 0 ? ' + ' + formatHM(entry.bankedIn) + ' banked' : '';
+    const pool    = formatHM(entry.totalSeconds);
+    const slots   = ' → up to ' + entry.maxDays +
       (entry.maxDays === 1 ? ' day' : ' days') + ' (' + entry.maxDays * HOURS_PER_DAY + 'h)';
     return tracked + ' tracked' + banked + ' = ' + pool + ' to allocate' + slots;
   }
@@ -1623,9 +1612,7 @@
     if (entry.bankedIn === 0 && entry.bankedOut === 0) return base;
     const carry = entry.bankedOut > 0
       ? '+' + formatHM(entry.bankedOut) + ' banked forward'
-      : entry.bankedOut < 0
-        ? '−' + formatHM(Math.abs(entry.bankedOut)) + ' pre-billed'
-        : 'fully drained';
+      : 'fully drained';
     return base + ' · ' + carry;
   }
 
@@ -1638,16 +1625,12 @@
     const billedPart = entry.days === 0
       ? 'no full day to bill yet'
       : 'bill ' + entry.days + ' × 8h = ' + billedHours + 'h';
-    const inPart = entry.bankedIn === 0
-      ? ''
-      : entry.bankedIn > 0
-        ? ' + ' + formatHM(entry.bankedIn) + ' rolled in from bank'
-        : ' − ' + formatHM(Math.abs(entry.bankedIn)) + ' owed back from bank';
-    const carryPart = entry.bankedOut === 0
-      ? 'bank empty for next fortnight'
-      : entry.bankedOut > 0
-        ? formatHM(entry.bankedOut) + ' banked for next fortnight'
-        : formatHM(Math.abs(entry.bankedOut)) + ' pre-billed (next fortnight starts in the red)';
+    const inPart = entry.bankedIn > 0
+      ? ' + ' + formatHM(entry.bankedIn) + ' rolled in from bank'
+      : '';
+    const carryPart = entry.bankedOut > 0
+      ? formatHM(entry.bankedOut) + ' banked for next fortnight'
+      : 'bank empty for next fortnight';
     return tracked + ' tracked' + inPart + ' → ' + billedPart + ', ' + carryPart;
   }
 

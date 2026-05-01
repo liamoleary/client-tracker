@@ -164,6 +164,20 @@ function initDB() {
     }
   } catch (_) { /* table may not exist yet on very old DBs */ }
 
+  // Fix-up: legacy invoices using the old round-up logic could leave a
+  // project's hours_banked_seconds negative ("pre-billed"). The current
+  // model treats banked exclusively as still-chargeable hours, so flip any
+  // negatives to their absolute value. Idempotent — once non-negative, the
+  // WHERE clause matches nothing.
+  try {
+    const flipped = db
+      .prepare('UPDATE projects SET hours_banked_seconds = -hours_banked_seconds WHERE hours_banked_seconds < 0')
+      .run();
+    if (flipped.changes > 0) {
+      console.log('[db] flipped ' + flipped.changes + ' negative banked balance(s) to positive');
+    }
+  } catch (_) { /* projects table may not exist yet on very old DBs */ }
+
   logStorageBanner();
 }
 
