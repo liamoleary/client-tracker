@@ -1295,36 +1295,22 @@
       return;
     }
 
-    if (!period.due) {
-      // In-progress fortnight: show the running total instead of the due banner.
-      invoiceBanner.hidden = true;
-      const running = computeInvoiceRunningTotal(invoiceSessions, period);
-      invoiceRunningPeriodEl.textContent = 'For ' + formatInvoicePeriod(period.start, period.end);
-      invoiceRunningTotalEl.textContent  = fmtMoney(running.totalAmount);
-      invoiceRunningMetaEl.textContent =
-        formatHM(running.totalSeconds) + ' worked so far · ' + formatDays(running.totalSeconds);
-      if (running.bankedSeconds > 0) {
-        invoiceRunningBankedEl.textContent =
-          '+ ' + formatHM(running.bankedSeconds) +
-          ' banked from earlier — rolls into this invoice: ' + fmtMoney(running.bankedAmount);
-        invoiceRunningBankedEl.hidden = false;
-      } else if (running.bankedSeconds < 0) {
-        invoiceRunningBankedEl.textContent =
-          '− ' + formatHM(Math.abs(running.bankedSeconds)) +
-          ' pre-billed earlier — comes off this invoice: −' + fmtMoney(Math.abs(running.bankedAmount));
-        invoiceRunningBankedEl.hidden = false;
-      } else {
-        invoiceRunningBankedEl.hidden = true;
-      }
-      invoiceRunningBanner.hidden = false;
-      return;
-    }
-
-    // Fortnight has closed → invoice is due, hide the running preview.
+    // The planner is visible whenever an anchor is set — both during the
+    // in-progress fortnight (so the user can plan ahead) and after it
+    // closes. The running-total banner is now redundant; the planner shows
+    // the same totals plus the day-grid.
     invoiceRunningBanner.hidden = true;
 
     const breakdown = computeInvoiceBreakdown(invoiceSessions, period);
 
+    const titleEl = document.getElementById('invoice-title');
+    if (period.due) {
+      titleEl.textContent = 'Invoice ready';
+      invoiceMarkBtn.textContent = 'Mark as invoiced';
+    } else {
+      titleEl.textContent = 'Plan invoice (in progress)';
+      invoiceMarkBtn.textContent = 'Mark as invoiced now';
+    }
     invoicePeriodEl.textContent = 'For ' + formatInvoicePeriod(period.start, period.end);
     invoiceTotalEl.textContent  = fmtMoney(breakdown.total);
 
@@ -1635,11 +1621,19 @@
   async function markInvoiceSent() {
     const through = invoiceBanner.dataset.throughDate;
     if (!through) return;
-    if (!confirm(
-      'Mark these days as invoiced and start the next fortnight?\n\n' +
-      'Any leftover hours will be banked forward as still-chargeable for ' +
-      'your next invoice.'
-    )) return;
+    const todayKey = localDateKey(new Date());
+    const isMidPeriod = todayKey <= through;
+    const message = isMidPeriod
+      ? 'Mark these days as invoiced now? The current fortnight isn\'t officially ' +
+        'over until ' + through + '.\n\n' +
+        'Any time you log in the remaining days won\'t roll into the next invoice ' +
+        'automatically — track it as usual and use the Edit button on Banked hours ' +
+        'to add it to your bank if needed.\n\n' +
+        'Continue?'
+      : 'Mark these days as invoiced and start the next fortnight?\n\n' +
+        'Any leftover hours will be banked forward as still-chargeable for ' +
+        'your next invoice.';
+    if (!confirm(message)) return;
     invoiceMarkBtn.disabled = true;
     try {
       let invoiced = [];
