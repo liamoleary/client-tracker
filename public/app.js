@@ -934,7 +934,10 @@
         const trackedSeconds = dates.reduce((t, k) => t + p.secondsByDate[k], 0);
         const bankedIn = Number(invoiceProjectsMeta[p.id]?.hours_banked_seconds) || 0;
         const totalSeconds = trackedSeconds + bankedIn;
-        const suggestedDays = Math.max(0, Math.round(totalSeconds / perDay));
+        // Floor: only full 8h days are billed by default, anything left rolls
+        // into the bank as hours-still-chargeable. The user can nudge the
+        // count up with "+" to spend their bank or pre-bill on purpose.
+        const suggestedDays = Math.max(0, Math.floor(totalSeconds / perDay));
         const override = invoiceDaysOverride[p.id];
         const days = Number.isFinite(override) ? Math.max(0, override) : suggestedDays;
         const bankedOut = totalSeconds - days * perDay;
@@ -1264,13 +1267,13 @@
         formatHM(running.totalSeconds) + ' worked so far · ' + formatDays(running.totalSeconds);
       if (running.bankedSeconds > 0) {
         invoiceRunningBankedEl.textContent =
-          'Plus ' + formatHM(running.bankedSeconds) +
-          ' banked for next fortnight: ' + fmtMoney(running.bankedAmount);
+          '+ ' + formatHM(running.bankedSeconds) +
+          ' banked from earlier — rolls into this invoice: ' + fmtMoney(running.bankedAmount);
         invoiceRunningBankedEl.hidden = false;
       } else if (running.bankedSeconds < 0) {
         invoiceRunningBankedEl.textContent =
-          'Less ' + formatHM(Math.abs(running.bankedSeconds)) +
-          ' pre-billed in prior invoices: −' + fmtMoney(Math.abs(running.bankedAmount));
+          '− ' + formatHM(Math.abs(running.bankedSeconds)) +
+          ' pre-billed earlier — comes off this invoice: −' + fmtMoney(Math.abs(running.bankedAmount));
         invoiceRunningBankedEl.hidden = false;
       } else {
         invoiceRunningBankedEl.hidden = true;
@@ -1460,20 +1463,37 @@
   }
 
   function buildRowMetaText(entry) {
-    const base = entry.days + ' day' + (entry.days === 1 ? '' : 's') +
-                 ' × ' + fmtMoney(entry.daily_rate);
+    const base = entry.days + ' × 8h day' + (entry.days === 1 ? '' : 's') +
+                 ' @ ' + fmtMoney(entry.daily_rate);
     if (entry.bankedIn === 0 && entry.bankedOut === 0) return base;
-    return base + ' · banking ' + formatSignedHM(entry.bankedOut);
+    const carry = entry.bankedOut > 0
+      ? '+' + formatHM(entry.bankedOut) + ' banked forward'
+      : entry.bankedOut < 0
+        ? '−' + formatHM(Math.abs(entry.bankedOut)) + ' pre-billed'
+        : 'fully drained';
+    return base + ' · ' + carry;
   }
 
+  // Plain-English breakdown of how the bank, the tracked time, and the day
+  // count fit together. Reads top-to-bottom so the user can see exactly what
+  // rolls in, what gets billed, and what banks forward.
   function buildBankLineText(entry) {
     const tracked = formatHM(entry.trackedSeconds);
-    const inPart  = entry.bankedIn === 0 ? '' : ' + banked ' + formatSignedHM(entry.bankedIn);
-    const total   = formatSignedHM(entry.totalSeconds);
-    const out     = formatSignedHM(entry.bankedOut);
-    return tracked + inPart + ' = ' + total +
-           ' → ' + entry.days + (entry.days === 1 ? ' day' : ' days') +
-           ' · carry forward ' + out;
+    const billedHours = entry.days * HOURS_PER_DAY;
+    const billedPart = entry.days === 0
+      ? 'no full day to bill yet'
+      : 'bill ' + entry.days + ' × 8h = ' + billedHours + 'h';
+    const inPart = entry.bankedIn === 0
+      ? ''
+      : entry.bankedIn > 0
+        ? ' + ' + formatHM(entry.bankedIn) + ' rolled in from bank'
+        : ' − ' + formatHM(Math.abs(entry.bankedIn)) + ' owed back from bank';
+    const carryPart = entry.bankedOut === 0
+      ? 'bank empty for next fortnight'
+      : entry.bankedOut > 0
+        ? formatHM(entry.bankedOut) + ' banked for next fortnight'
+        : formatHM(Math.abs(entry.bankedOut)) + ' pre-billed (next fortnight starts in the red)';
+    return tracked + ' tracked' + inPart + ' → ' + billedPart + ', ' + carryPart;
   }
 
   // Signed "Hh Mm" — negative values get a leading "-". Used for banked
@@ -1508,7 +1528,11 @@
   async function markInvoiceSent() {
     const through = invoiceBanner.dataset.throughDate;
     if (!through) return;
-    if (!confirm('Mark this fortnight as invoiced? The reminder will move on to the next period.')) return;
+    if (!confirm(
+      'Mark these days as invoiced and start the next fortnight?\n\n' +
+      'Any leftover hours will be banked forward as still-chargeable for ' +
+      'your next invoice.'
+    )) return;
     invoiceMarkBtn.disabled = true;
     try {
       let invoiced = [];
