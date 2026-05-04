@@ -193,18 +193,35 @@ router.post('/stop', (req, res) => {
 
 // POST /api/timer/confirm
 router.post('/confirm', (req, res) => {
+  const now = new Date().toISOString();
   const active = getActiveSession();
-  if (!active) {
-    return res.status(400).json({ error: 'No timer is running' });
+  if (active) {
+    db.prepare('UPDATE sessions SET last_notified_at = ? WHERE id = ?').run(
+      now,
+      active.id,
+    );
+    return res.json({ confirmed: true });
   }
 
-  const now = new Date().toISOString();
-  db.prepare('UPDATE sessions SET last_notified_at = ? WHERE id = ?').run(
-    now,
-    active.id,
-  );
+  // No live timer — but the user just tapped "Yes, still working" on a
+  // check-in. If the server recently auto-closed the session (2h idle
+  // auto-stop, or a stray "No, stop timer" tap on an earlier notification)
+  // within the amend window, resurrect it so the timer keeps ticking from
+  // its original start. Otherwise the user's "yes" would silently fail and
+  // the open app's banner would disappear on the next resync — which feels
+  // exactly like "I said I was still working but it stopped my timer".
+  const recent = getAmendableAutoStopped();
+  if (recent) {
+    const endedMs = new Date(recent.end_time).getTime();
+    if (Date.now() - endedMs <= AUTO_STOP_AMEND_WINDOW_MS) {
+      db.prepare(
+        'UPDATE sessions SET end_time = NULL, duration_seconds = NULL, auto_stopped = 0, last_notified_at = ? WHERE id = ?',
+      ).run(now, recent.id);
+      return res.json({ confirmed: true, resumed: true });
+    }
+  }
 
-  res.json({ confirmed: true });
+  return res.status(400).json({ error: 'No timer is running' });
 });
 
 module.exports = { router, getActiveSession };
